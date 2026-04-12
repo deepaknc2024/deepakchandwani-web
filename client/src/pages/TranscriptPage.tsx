@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect, type RefObject } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useTranscript } from "@/hooks/useTranscript";
 import TranscriptInput from "@/components/transcript/TranscriptInput";
 import TranscriptToolbar from "@/components/transcript/TranscriptToolbar";
