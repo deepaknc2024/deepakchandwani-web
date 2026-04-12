@@ -33,7 +33,7 @@ export default function HeroLeft() {
         {/* Badge */}
         <div className="inline-flex items-center gap-2 border border-cyan-2/35 rounded-[10px] py-1 px-3.5 text-[0.68rem] font-bold tracking-[1.8px] uppercase text-cyan-2 mb-8 bg-cyan-2/[0.06]">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-2 shrink-0 animate-[pdot_2s_ease-in-out_infinite]" />
-          Available for AI Projects
+          AI &amp; Emerging Technology
         </div>
 
         {/* Name */}
@@ -45,59 +45,47 @@ export default function HeroLeft() {
 
         {/* Role */}
         <p className="text-[clamp(0.88rem,1.3vw,1rem)] text-cyan-2 font-semibold tracking-[0.5px] mb-4">
-          AI Consultant &amp; Strategist
+          AI Architect &middot; LLM Specialist &middot; Technology Strategist
         </p>
 
         {/* Description */}
-        <p className="text-[0.88rem] text-muted leading-[1.78] mb-9 max-w-[360px]">
-          Helping businesses design, build, and scale intelligent solutions that
-          create real-world impact.
+        <p className="text-[0.88rem] text-muted leading-[1.78] mb-9 max-w-[380px]">
+          Specializing in large language models, agentic AI systems, retrieval-augmented generation, and enterprise-grade intelligent automation.
         </p>
 
         {/* Actions */}
         <div className="flex gap-3 flex-wrap mb-12 max-[580px]:flex-col">
           <a
-            href="#services"
+            href="#expertise"
             className="py-3 px-6 bg-cyan-2 text-white rounded-[10px] font-bold text-[0.85rem] no-underline transition-all hover:bg-cyan hover:shadow-[0_6px_20px_rgba(6,182,212,0.4)] whitespace-nowrap"
           >
-            Explore Services &rarr;
+            Areas of Expertise &rarr;
           </a>
           <a
             href="/transcript"
             className="py-3 px-5 bg-white text-body border-[1.5px] border-bdl rounded-[10px] font-semibold text-[0.85rem] no-underline transition-all hover:border-cyan-2 hover:text-cyan-2 whitespace-nowrap"
           >
-            &#9889; Transcript Tool
+            &#9889; AI Tools
           </a>
         </div>
 
-        {/* Mini stats */}
-        <div className="flex items-center gap-7 pt-9 border-t border-bdl max-md:gap-5 max-[580px]:gap-3.5">
-          <div>
-            <div className="font-syne text-[2rem] font-extrabold text-ink leading-none max-[580px]:text-[1.6rem]">
-              50<sup className="text-cyan-2 text-[1.1rem] align-super">+</sup>
-            </div>
-            <div className="text-[0.62rem] uppercase tracking-[1.5px] text-faint mt-1">
-              Projects
-            </div>
-          </div>
-          <div className="w-px h-[38px] bg-bdl" />
-          <div>
-            <div className="font-syne text-[2rem] font-extrabold text-ink leading-none max-[580px]:text-[1.6rem]">
-              10<sup className="text-cyan-2 text-[1.1rem] align-super">+</sup>
-            </div>
-            <div className="text-[0.62rem] uppercase tracking-[1.5px] text-faint mt-1">
-              Years Exp.
-            </div>
-          </div>
-          <div className="w-px h-[38px] bg-bdl" />
-          <div>
-            <div className="font-syne text-[2rem] font-extrabold text-ink leading-none max-[580px]:text-[1.6rem]">
-              30<sup className="text-cyan-2 text-[1.1rem] align-super">+</sup>
-            </div>
-            <div className="text-[0.62rem] uppercase tracking-[1.5px] text-faint mt-1">
-              Clients
-            </div>
-          </div>
+        {/* Expertise pills */}
+        <div className="flex flex-wrap gap-1.5 pt-9 border-t border-bdl">
+          {[
+            "LLM & GenAI",
+            "Agentic AI",
+            "RAG Systems",
+            "MLOps",
+            "Multi-modal AI",
+            "Voice AI",
+          ].map((skill) => (
+            <span
+              key={skill}
+              className="py-1 px-3 border border-cyan-2/25 rounded-lg text-[0.65rem] font-semibold text-cyan-2 bg-cyan-2/[0.05] tracking-[0.3px]"
+            >
+              {skill}
+            </span>
+          ))}
         </div>
       </div>
     </div>

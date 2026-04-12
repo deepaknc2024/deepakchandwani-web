@@ -17,38 +17,40 @@ export default function AboutSection() {
           }`}
         >
           <div className="text-[0.66rem] font-bold tracking-[2.5px] uppercase text-cyan-2 mb-3">
-            About Me
+            Background
           </div>
           <h2 className="font-syne text-[clamp(2rem,3.5vw,2.8rem)] font-extrabold tracking-[-1.2px] text-ink leading-[1.15] mb-6">
-            Turning AI Vision into Real&#8209;World Impact
+            Where AI Meets Real&#8209;World Execution
           </h2>
           <p className="text-muted text-[0.97rem] leading-[1.8] mb-4">
-            I&rsquo;m Deepak Chandwani &mdash; an AI consultant and technology
-            strategist with a passion for helping organisations embrace
-            intelligent automation and data-driven decision making.
+            Deepak Chandwani is an AI architect and technology strategist
+            focused on large language models, agentic AI, and intelligent
+            automation at enterprise scale.
           </p>
           <p className="text-muted text-[0.97rem] leading-[1.8] mb-4">
-            With deep expertise across machine learning, large language models,
-            and AI product development, I partner with startups and enterprises
-            to design and deploy solutions that create measurable business value.
+            His work spans the full AI lifecycle &mdash; from research and
+            proof&#8209;of&#8209;concept through production deployment and MLOps
+            &mdash; with deep hands-on experience in LLM fine-tuning,
+            retrieval-augmented generation, multi-modal systems, and
+            voice&nbsp;AI.
           </p>
           <p className="text-muted text-[0.97rem] leading-[1.8] mb-4">
-            My approach combines technical rigour with a clear business lens
-            &mdash; ensuring every AI initiative delivers outcomes that truly
-            matter.
+            A practitioner at the intersection of cutting-edge research and
+            practical engineering, with a focus on building AI systems that
+            are reliable, scalable, and grounded in measurable outcomes.
           </p>
           <div className="flex gap-3 mt-8 flex-wrap">
             <a
-              href="#services"
+              href="#expertise"
               className="py-3 px-6 bg-ink text-white rounded-md font-bold text-[0.85rem] no-underline transition-all hover:bg-dark-2 hover:shadow-[0_6px_24px_rgba(0,0,0,0.1)]"
             >
-              View AI Services &rarr;
+              Areas of Focus &rarr;
             </a>
             <a
               href="#contact"
               className="py-3 px-5 border-[1.5px] border-bdl text-body rounded-md font-semibold text-[0.85rem] no-underline transition-all hover:border-cyan-2 hover:text-cyan-2"
             >
-              Get in Touch
+              Connect
             </a>
           </div>
         </div>
@@ -74,18 +76,20 @@ export default function AboutSection() {
               Deepak Chandwani
             </h3>
             <p className="text-muted text-[0.85rem]">
-              AI Consultant &amp; Strategist
+              AI Architect &amp; Technology Strategist
             </p>
 
             {/* Tags */}
             <div className="flex flex-wrap gap-1.5 justify-center mt-6">
               {[
-                { label: "Machine Learning", hot: true },
-                { label: "LLMs", hot: true },
-                { label: "AI Strategy", hot: false },
-                { label: "RAG Systems", hot: false },
-                { label: "Automation", hot: false },
-                { label: "Generative AI", hot: true },
+                { label: "LLM Engineering", hot: true },
+                { label: "Agentic AI", hot: true },
+                { label: "RAG & Retrieval", hot: false },
+                { label: "Multi-modal AI", hot: false },
+                { label: "Voice & Conversational AI", hot: true },
+                { label: "MLOps & Deployment", hot: false },
+                { label: "Prompt Engineering", hot: true },
+                { label: "AI Product Architecture", hot: false },
               ].map((tag) => (
                 <span
                   key={tag.label}
@@ -106,19 +110,19 @@ export default function AboutSection() {
             <div className="w-6 h-6 rounded-md flex items-center justify-center text-[0.85rem] bg-[#ecfdf5]">
               &#9989;
             </div>
-            Top Rated
+            LLM Specialist
           </div>
           <div className="absolute bottom-4.5 -left-5.5 bg-white rounded-[10px] py-2 px-3.5 shadow-[0_6px_24px_rgba(0,0,0,0.1)] flex items-center gap-1.5 text-[0.74rem] font-semibold text-ink animate-[bob_3.5s_ease-in-out_infinite_0.5s] max-lg:hidden">
             <div className="w-6 h-6 rounded-md flex items-center justify-center text-[0.85rem] bg-[#eff6ff]">
               &#129302;
             </div>
-            AI Expert
+            AI Architect
           </div>
           <div className="absolute top-[40%] -right-7 bg-white rounded-[10px] py-2 px-3.5 shadow-[0_6px_24px_rgba(0,0,0,0.1)] flex items-center gap-1.5 text-[0.74rem] font-semibold text-ink animate-[bob_4s_ease-in-out_infinite_1s] max-lg:hidden">
             <div className="w-6 h-6 rounded-md flex items-center justify-center text-[0.85rem] bg-[#fefce8]">
               &#11088;
             </div>
-            50+ Projects
+            GenAI Pioneer
           </div>
         </div>
       </div>

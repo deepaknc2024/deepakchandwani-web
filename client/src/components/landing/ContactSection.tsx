@@ -21,14 +21,15 @@ export default function ContactSection() {
           }`}
         >
           <div className="text-[0.66rem] font-bold tracking-[2.5px] uppercase text-cyan-2 mb-3">
-            Get in Touch
+            Connect
           </div>
           <h2 className="font-syne text-[clamp(1.8rem,3vw,2.5rem)] font-extrabold tracking-[-1px] text-ink leading-[1.2] mb-4">
-            Let&rsquo;s Build Something Amazing
+            Let&rsquo;s Exchange Ideas
           </h2>
           <p className="text-muted text-[0.95rem] leading-[1.8] mb-10">
-            Have a project in mind or want to explore how AI can transform your
-            business? I&rsquo;d love to hear from you.
+            Interested in AI, emerging technology, or just want to connect?
+            Drop a message &mdash; always happy to discuss what&rsquo;s next
+            in the space.
           </p>
 
           <div className="flex flex-col gap-4">
@@ -66,10 +67,10 @@ export default function ContactSection() {
               </div>
               <div>
                 <strong className="block text-[0.82rem] font-bold text-ink">
-                  Availability
+                  Based in
                 </strong>
                 <span className="text-[0.82rem] text-muted">
-                  Worldwide &middot; Remote &amp; On-site
+                  United States
                 </span>
               </div>
             </div>

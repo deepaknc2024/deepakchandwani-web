@@ -69,11 +69,11 @@ export default function Navbar() {
                 About
               </a>
               <a
-                href="#services"
+                href="#expertise"
                 className="text-muted text-[0.83rem] font-medium no-underline tracking-[0.2px] hover:text-cyan-2 transition-colors"
                 onClick={closeMenu}
               >
-                Services
+                Expertise
               </a>
               <a
                 href="#ai-video"
@@ -93,11 +93,11 @@ export default function Navbar() {
                 About
               </Link>
               <Link
-                to="/#services"
+                to="/#expertise"
                 className="text-muted text-[0.83rem] font-medium no-underline tracking-[0.2px] hover:text-cyan-2 transition-colors"
                 onClick={closeMenu}
               >
-                Services
+                Expertise
               </Link>
               <Link
                 to="/#ai-video"
@@ -177,7 +177,7 @@ export default function Navbar() {
             href="#contact"
             className="py-2 px-5 bg-cyan-2 text-white rounded-[10px] font-bold text-[0.82rem] no-underline transition-all hover:bg-cyan hover:shadow-[0_4px_16px_rgba(6,182,212,0.35)] whitespace-nowrap"
           >
-            Let&rsquo;s Talk &rarr;
+            Connect &rarr;
           </a>
 
           {/* Hamburger */}
