@@ -95,17 +95,17 @@ export function setupVoiceRelay(server: http.Server) {
       }, 20_000);
     });
 
-    // Relay: upstream -> client
+    // Relay: upstream -> client (must send as string, not Buffer)
     upstream.on('message', (data) => {
       if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(data);
+        clientWs.send(data.toString());
       }
     });
 
-    // Relay: client -> upstream
+    // Relay: client -> upstream (must send as string, not Buffer)
     clientWs.on('message', (data) => {
       if (upstream.readyState === WebSocket.OPEN) {
-        upstream.send(data);
+        upstream.send(data.toString());
       }
     });
 

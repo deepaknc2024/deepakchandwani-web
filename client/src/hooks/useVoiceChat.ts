@@ -192,10 +192,11 @@ export function useVoiceChat(): UseVoiceChatReturn {
     }
 
     wsRef.current.onopen = () => {
+      console.log("[voice-chat] WebSocket connected");
       setIsConnected(true);
       setStatus("connecting");
       addMessage("Connecting to voice assistant...", "system");
-      startMic();
+      startMic().catch((err) => console.error("[voice-chat] Mic error:", err));
     };
 
     wsRef.current.onmessage = (evt) => {
@@ -270,14 +271,17 @@ export function useVoiceChat(): UseVoiceChatReturn {
       }
     };
 
-    wsRef.current.onerror = () => {
+    wsRef.current.onerror = (ev) => {
+      console.error("[voice-chat] WebSocket error:", ev);
       setStatus("error");
     };
 
-    wsRef.current.onclose = () => {
+    wsRef.current.onclose = (ev) => {
+      console.log("[voice-chat] WebSocket closed:", ev.code, ev.reason);
       setIsConnected(false);
       setStatus("disconnected");
-      if (panelOpenRef.current) {
+      // Only auto-reconnect if panel is open AND we didn't close intentionally
+      if (panelOpenRef.current && ev.code !== 1000) {
         setTimeout(() => {
           if (panelOpenRef.current) {
             addMessage("Reconnecting...", "system");
