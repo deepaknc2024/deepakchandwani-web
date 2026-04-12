@@ -461,6 +461,11 @@ RULES:
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
+
+    // Gemini 2.0 Flash pricing via OpenRouter (per token)
+    const INPUT_COST_PER_TOKEN = 0.10 / 1_000_000;   // $0.10 per 1M input tokens
+    const OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000;   // $0.40 per 1M output tokens
 
     while (true) {
       const { done, value } = await reader.read();
@@ -474,7 +479,6 @@ RULES:
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6).trim();
         if (data === '[DONE]') {
-          res.write('data: [DONE]\n\n');
           continue;
         }
         try {
@@ -483,12 +487,35 @@ RULES:
           if (content) {
             res.write(`data: ${JSON.stringify({ content })}\n\n`);
           }
+          // OpenRouter includes usage in the final chunk
+          if (parsed.usage) {
+            usage = parsed.usage;
+          }
         } catch {
           // skip malformed chunks
         }
       }
     }
 
+    // Send usage/cost info as the final event
+    if (usage) {
+      const inputTokens = usage.prompt_tokens || 0;
+      const outputTokens = usage.completion_tokens || 0;
+      const totalTokens = usage.total_tokens || (inputTokens + outputTokens);
+      const costUsd = (inputTokens * INPUT_COST_PER_TOKEN) + (outputTokens * OUTPUT_COST_PER_TOKEN);
+
+      res.write(`data: ${JSON.stringify({
+        usage: {
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          total_tokens: totalTokens,
+          cost_usd: costUsd,
+          model: 'google/gemini-2.0-flash-001',
+        }
+      })}\n\n`);
+    }
+
+    res.write('data: [DONE]\n\n');
     res.end();
   } catch (err) {
     console.error('[summarize] Error:', err);

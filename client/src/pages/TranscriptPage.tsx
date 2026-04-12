@@ -15,6 +15,13 @@ export default function TranscriptPage() {
   const [summary, setSummary] = useState("");
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [summaryUsage, setSummaryUsage] = useState<{
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    cost_usd: number;
+    model: string;
+  } | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
 
   const matchCount = useMemo(() => {
@@ -40,6 +47,7 @@ export default function TranscriptPage() {
     setIsSummarizing(true);
     setSummary("");
     setSummaryError(null);
+    setSummaryUsage(null);
 
     const fullText = transcript.lines.map((l) => l.text).join(" ");
 
@@ -80,6 +88,9 @@ export default function TranscriptPage() {
             }
             if (parsed.content) {
               setSummary((prev) => prev + parsed.content);
+            }
+            if (parsed.usage) {
+              setSummaryUsage(parsed.usage);
             }
           } catch (e) {
             if (e instanceof Error && e.message !== "[DONE]") {
@@ -180,13 +191,33 @@ export default function TranscriptPage() {
                 )}
 
                 {!isSummarizing && summary && (
-                  <div className="mt-4 flex gap-2 border-t border-cyan-2/10 pt-3">
+                  <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-cyan-2/10 pt-3">
                     <button
                       onClick={() => navigator.clipboard.writeText(summary)}
                       className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-muted shadow-sm transition-all hover:text-ink"
                     >
                       {"\ud83d\udccb"} Copy Summary
                     </button>
+
+                    {summaryUsage && (
+                      <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-muted">
+                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm">
+                          {summaryUsage.model.split('/')[1] || summaryUsage.model}
+                        </span>
+                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm" title="Input tokens">
+                          In: {summaryUsage.input_tokens.toLocaleString()}
+                        </span>
+                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm" title="Output tokens">
+                          Out: {summaryUsage.output_tokens.toLocaleString()}
+                        </span>
+                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm font-semibold" title="Total tokens">
+                          Total: {summaryUsage.total_tokens.toLocaleString()} tokens
+                        </span>
+                        <span className="rounded-md bg-cyan-2/10 px-2 py-0.5 font-semibold text-cyan-2 shadow-sm" title="Cost">
+                          ${summaryUsage.cost_usd.toFixed(4)} USD / {"\u20b9"}{(summaryUsage.cost_usd * 85.5).toFixed(2)} INR
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
