@@ -69,18 +69,11 @@ export default function TranscriptPage() {
       const decoder = new TextDecoder();
       let buffer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
+      const processLines = (text: string) => {
+        for (const line of text.split("\n")) {
           if (!line.startsWith("data: ")) continue;
           const data = line.slice(6).trim();
-          if (data === "[DONE]") continue;
+          if (data === "[DONE]" || !data) continue;
           try {
             const parsed = JSON.parse(data);
             if (parsed.error) {
@@ -90,15 +83,28 @@ export default function TranscriptPage() {
               setSummary((prev) => prev + parsed.content);
             }
             if (parsed.usage) {
+              console.log("[summarize] Usage received:", parsed.usage);
               setSummaryUsage(parsed.usage);
             }
           } catch (e) {
-            if (e instanceof Error && e.message !== "[DONE]") {
-              // Only throw actual errors, not parse issues from [DONE]
-              if (data !== "[DONE]") throw e;
-            }
+            if (e instanceof Error && !e.message.includes("JSON")) throw e;
           }
         }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lastNewline = buffer.lastIndexOf("\n");
+        if (lastNewline !== -1) {
+          processLines(buffer.substring(0, lastNewline));
+          buffer = buffer.substring(lastNewline + 1);
+        }
+      }
+      // Process any remaining buffer
+      if (buffer.trim()) {
+        processLines(buffer);
       }
     } catch (e) {
       setSummaryError(
