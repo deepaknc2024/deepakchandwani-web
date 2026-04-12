@@ -4,6 +4,8 @@ import LandingPage from "@/pages/LandingPage";
 import TranscriptPage from "@/pages/TranscriptPage";
 import BseMeetingPage from "@/pages/BseMeetingPage";
 import NotFoundPage from "@/pages/NotFoundPage";
+import LoginPage from "@/pages/LoginPage";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 export const router = createBrowserRouter([
   {
@@ -14,16 +16,32 @@ export const router = createBrowserRouter([
         element: <LandingPage />,
       },
       {
+        path: "/login",
+        element: <LoginPage />,
+      },
+      {
         path: "/transcript",
-        element: <TranscriptPage />,
+        element: (
+          <ProtectedRoute>
+            <TranscriptPage />
+          </ProtectedRoute>
+        ),
       },
       {
         path: "/bse-meeting",
-        element: <BseMeetingPage />,
+        element: (
+          <ProtectedRoute>
+            <BseMeetingPage />
+          </ProtectedRoute>
+        ),
       },
       {
         path: "/bse-design",
-        element: <BseMeetingPage slug="bse-design" />,
+        element: (
+          <ProtectedRoute>
+            <BseMeetingPage slug="bse-design" />
+          </ProtectedRoute>
+        ),
       },
       {
         path: "*",

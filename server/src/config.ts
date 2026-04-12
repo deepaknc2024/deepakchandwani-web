@@ -11,6 +11,17 @@ export const config = {
     password: process.env.DB_PASSWORD || '',
   },
 
+  session: {
+    secret: process.env.SESSION_SECRET || 'dev-session-secret-change-me',
+    maxAge: 6 * 60 * 60 * 1000, // 6 hours in milliseconds
+  },
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    callbackUrl: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3001/api/auth/google/callback',
+  },
+
   guardianApiKey: process.env.GUARDIAN_API_KEY || 'test',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openrouterApiKey: process.env.OPENROUTER_API_KEY || '',

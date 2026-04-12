@@ -1,19 +1,42 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useScrollShadow } from "@/hooks/useScrollShadow";
+import { useAuthContext } from "@/contexts/AuthContext";
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const scrolled = useScrollShadow();
   const location = useLocation();
+  const { user, isAuthenticated, logout } = useAuthContext();
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const isLanding = location.pathname === "/";
 
   function closeMenu() {
     setMenuOpen(false);
     setToolsOpen(false);
+    setUserMenuOpen(false);
   }
+
+  // Close user menu on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const handleLogout = async () => {
+    closeMenu();
+    await logout();
+  };
+
+  const userInitial = user?.firstName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U";
 
   return (
     <header
@@ -169,16 +192,75 @@ export default function Navbar() {
               Contact
             </Link>
           )}
+
+          {/* Mobile-only auth links */}
+          {!isAuthenticated && (
+            <Link
+              to="/login"
+              className="md:hidden text-cyan-2 text-[0.83rem] font-semibold no-underline tracking-[0.2px]"
+              onClick={closeMenu}
+            >
+              Sign In / Sign Up
+            </Link>
+          )}
+          {isAuthenticated && (
+            <button
+              className="md:hidden text-muted text-[0.83rem] font-medium bg-transparent border-none cursor-pointer"
+              onClick={handleLogout}
+            >
+              Sign Out
+            </button>
+          )}
         </nav>
 
         <div className="flex items-center gap-3">
-          {/* CTA */}
-          <a
-            href="#contact"
-            className="py-2 px-5 bg-cyan-2 text-white rounded-[10px] font-bold text-[0.82rem] no-underline transition-all hover:bg-cyan hover:shadow-[0_4px_16px_rgba(6,182,212,0.35)] whitespace-nowrap"
-          >
-            Connect &rarr;
-          </a>
+          {/* Auth button — desktop */}
+          {isAuthenticated ? (
+            <div className="relative hidden md:block" ref={userMenuRef}>
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex items-center gap-2 bg-transparent border-none cursor-pointer"
+                type="button"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-2 text-white text-xs font-bold">
+                  {userInitial}
+                </span>
+              </button>
+              {userMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-bdl bg-white py-2 shadow-[0_8px_32px_rgba(0,0,0,0.12)] z-310">
+                  <div className="px-4 py-2 border-b border-bdl">
+                    <p className="text-xs font-semibold text-ink truncate">
+                      {user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user?.email}
+                    </p>
+                    <p className="text-[0.7rem] text-muted truncate">{user?.email}</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2 text-sm text-muted hover:bg-light-2 hover:text-ink bg-transparent border-none cursor-pointer transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              className="hidden md:inline-block py-2 px-5 bg-cyan-2 text-white rounded-[10px] font-bold text-[0.82rem] no-underline transition-all hover:bg-cyan hover:shadow-[0_4px_16px_rgba(6,182,212,0.35)] whitespace-nowrap"
+            >
+              Sign In
+            </Link>
+          )}
+
+          {/* CTA — only show on landing when not authenticated (sign-in replaces it) */}
+          {isLanding && isAuthenticated && (
+            <a
+              href="#contact"
+              className="py-2 px-5 bg-cyan-2 text-white rounded-[10px] font-bold text-[0.82rem] no-underline transition-all hover:bg-cyan hover:shadow-[0_4px_16px_rgba(6,182,212,0.35)] whitespace-nowrap"
+            >
+              Connect &rarr;
+            </a>
+          )}
 
           {/* Hamburger */}
           <button
