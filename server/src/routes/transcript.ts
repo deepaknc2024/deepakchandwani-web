@@ -227,10 +227,13 @@ async function fetchViaInnerTube(
   const tracks: CaptionTrack[] =
     data?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
 
+  console.log(`[transcript] InnerTube ANDROID: ${tracks.length} tracks for ${videoId}, status=${data?.playabilityStatus?.status}`);
+
   if (!tracks.length) throw new Error('NO_CAPTIONS');
 
   const track = pickTrack(tracks);
   if (!track) throw new Error('NO_CAPTIONS');
+  console.log(`[transcript] Fetching captions: lang=${track.languageCode}, url=${track.baseUrl.substring(0, 80)}`);
 
   // Fetch captions — try XML first (more reliable), then JSON3
   let lines: TranscriptLine[] = [];
