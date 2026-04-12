@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, type RefObject } from "react";
 import { useTranscript } from "@/hooks/useTranscript";
 import TranscriptInput from "@/components/transcript/TranscriptInput";
 import TranscriptToolbar from "@/components/transcript/TranscriptToolbar";
@@ -23,6 +23,7 @@ export default function TranscriptPage() {
     model: string;
   } | null>(null);
   const [activeModel, setActiveModel] = useState<string | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const summaryRef = useRef<HTMLDivElement>(null);
 
   const matchCount = useMemo(() => {
@@ -213,6 +214,26 @@ export default function TranscriptPage() {
                     >
                       {"\ud83d\udccb"} Copy Summary
                     </button>
+                    <button
+                      onClick={() => {
+                        if (isSpeaking) {
+                          // Stop any playing audio
+                          window.speechSynthesis?.cancel();
+                          const audio = document.getElementById("tts-audio") as HTMLAudioElement | null;
+                          if (audio) { audio.pause(); audio.currentTime = 0; }
+                          setIsSpeaking(false);
+                        } else {
+                          playSummary(summary, setIsSpeaking);
+                        }
+                      }}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold shadow-sm transition-all ${
+                        isSpeaking
+                          ? "bg-red/10 text-red hover:bg-red/20"
+                          : "bg-indigo/10 text-indigo hover:bg-indigo/20"
+                      }`}
+                    >
+                      {isSpeaking ? "\u23f9 Stop" : "\ud83d\udd0a Play Summary"}
+                    </button>
 
                     {summaryUsage && (
                       <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-muted">
@@ -276,6 +297,71 @@ export default function TranscriptPage() {
       </div>
     </div>
   );
+}
+
+// Hidden audio element for Sarvam TTS playback
+// (added outside component to avoid re-renders)
+
+// Strip markdown to plain text for TTS
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/^#{1,3}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/^- /gm, '')
+    .replace(/^> /gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+async function playSummary(
+  summary: string,
+  setIsSpeaking: (v: boolean) => void,
+) {
+  const plainText = stripMarkdown(summary);
+  setIsSpeaking(true);
+
+  // Try Sarvam TTS first
+  try {
+    const resp = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: plainText, language: "en" }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.ok && data.audio) {
+        // Play base64 audio
+        let audio = document.getElementById("tts-audio") as HTMLAudioElement | null;
+        if (!audio) {
+          audio = document.createElement("audio");
+          audio.id = "tts-audio";
+          document.body.appendChild(audio);
+        }
+        audio.src = `data:audio/wav;base64,${data.audio}`;
+        audio.onended = () => setIsSpeaking(false);
+        audio.onerror = () => setIsSpeaking(false);
+        await audio.play();
+        return;
+      }
+    }
+  } catch {
+    // Fall through to browser TTS
+  }
+
+  // Fallback: Browser Speech Synthesis
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(plainText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  } else {
+    setIsSpeaking(false);
+  }
 }
 
 // Simple markdown to HTML converter for summary rendering

@@ -11,6 +11,7 @@ import newsRouter from './routes/news.js';
 import transcriptRouter from './routes/transcript.js';
 import contactRouter from './routes/contact.js';
 import authRouter from './routes/auth.js';
+import ttsRouter from './routes/tts.js';
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use('/api', newsRouter);
 app.use('/api', transcriptRouter);
 app.use('/api', contactRouter);
 app.use('/api', authRouter);
+app.use('/api', ttsRouter);
 
 const server = createServer(app);
 

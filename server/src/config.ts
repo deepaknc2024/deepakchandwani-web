@@ -14,6 +14,7 @@ export const config = {
   guardianApiKey: process.env.GUARDIAN_API_KEY || 'test',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
+  sarvamApiKey: process.env.SARVAM_API_KEY || '',
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-me',
   contactEmail: process.env.CONTACT_EMAIL || 'deepakchandwani@yahoo.com',
 };

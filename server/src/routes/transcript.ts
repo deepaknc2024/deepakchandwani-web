@@ -527,10 +527,13 @@ RULES:
       const inputTokens = usage.prompt_tokens || 0;
       const outputTokens = usage.completion_tokens || 0;
       const totalTokens = usage.total_tokens || (inputTokens + outputTokens);
-      // Use OpenRouter's reported cost if available, otherwise calculate
-      const costUsd = (usage as Record<string, unknown>).cost
-        ? Number((usage as Record<string, unknown>).cost)
-        : (inputTokens * INPUT_COST_PER_TOKEN) + (outputTokens * OUTPUT_COST_PER_TOKEN);
+      // Free models: show $0. Otherwise use OpenRouter's reported cost.
+      const isFreeModel = usedModel.id.includes(':free');
+      const costUsd = isFreeModel ? 0 : (
+        (usage as Record<string, unknown>).cost
+          ? Number((usage as Record<string, unknown>).cost)
+          : (inputTokens * INPUT_COST_PER_TOKEN) + (outputTokens * OUTPUT_COST_PER_TOKEN)
+      );
 
       res.write(`data: ${JSON.stringify({
         usage: {
