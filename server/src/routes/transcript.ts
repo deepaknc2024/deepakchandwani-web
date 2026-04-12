@@ -402,17 +402,19 @@ router.post('/summarize', async (req, res) => {
   const words = transcript.split(/\s+/);
   const truncated = words.length > 12000 ? words.slice(0, 12000).join(' ') + '\n\n[Transcript truncated...]' : transcript;
 
-  const systemPrompt = `You are an expert content summarizer. Your job is to create a comprehensive, detailed summary of a YouTube video transcript.
+  const systemPrompt = `You are an expert content summarizer. Extract the SUBSTANCE from a YouTube video transcript.
 
 RULES:
-- Write a DETAILED summary — not a short abstract. Cover all major points, arguments, examples, and conclusions discussed in the video.
-- Structure the summary with clear sections using markdown headers (##).
-- Include key quotes or specific details where they add value.
-- Use bullet points for lists of items or steps.
-- If the speaker mentions specific data, numbers, names, or resources — include them.
-- Write in third person ("The speaker discusses..." or "The video covers...").
-- The summary should be long enough that someone who reads it gets a thorough understanding of the video content without watching it.
-- End with a "Key Takeaways" section with 3-5 bullet points.`;
+- Focus ONLY on the actual ideas, arguments, facts, insights, and conclusions. This is what matters.
+- SKIP all filler: greetings, intros, "hey guys", pleasantries, self-promotion, subscribe reminders, sponsor segments, small talk, transitions like "so let's move on", audience interaction.
+- SKIP descriptions of what the speaker is doing ("the speaker greets", "he sits down", "she thanks the audience"). Nobody cares. Just give the IDEAS.
+- Structure with markdown headers (##) by topic, NOT by chronology. Group related ideas together.
+- Use bullet points for concrete facts, steps, or examples.
+- Include specific data, numbers, names, frameworks, or resources mentioned — these are the valuable parts.
+- Keep it tight. Every sentence should carry information. If a sentence could be removed without losing substance, remove it.
+- Aim for 300-600 words depending on video length. Not a tweet, not an essay.
+- End with "## Key Takeaways" — 3-5 bullet points of the most actionable/important insights.
+- Write directly. No "The speaker discusses..." — just state what was said as fact.`;
 
   const userPrompt = title
     ? `Summarize this YouTube video transcript in detail.\n\nVideo Title: "${title}"\n\nTranscript:\n${truncated}`
