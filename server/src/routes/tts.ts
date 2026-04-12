@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { config } from '../config.js';
-import { tts as edgeTts } from 'edge-tts';
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 const router = Router();
 
@@ -45,13 +45,26 @@ router.post('/tts', async (req, res) => {
     const voice = EDGE_VOICES[lang] || EDGE_VOICES.en;
     console.log(`[tts] Using Edge TTS: voice=${voice}, text=${text.length} chars`);
 
-    const audioBuffer = await edgeTts(text.substring(0, 5000), { voice, rate: '+5%', pitch: '+0Hz' });
+    const tts = new MsEdgeTTS();
+    await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
 
-    if (audioBuffer && audioBuffer.length > 100) {
-      const base64 = audioBuffer.toString('base64');
+    const { audioStream } = tts.toStream(text.substring(0, 5000));
+    const chunks: Buffer[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      audioStream.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      audioStream.on('end', () => resolve());
+      audioStream.on('error', (err: Error) => reject(err));
+      setTimeout(() => reject(new Error('Edge TTS timeout')), 30000);
+    });
+
+    const audioBuffer = Buffer.concat(chunks);
+    if (audioBuffer.length > 100) {
       return res.json({
         ok: true,
-        audio: base64,
+        audio: audioBuffer.toString('base64'),
         format: 'mp3',
         provider: 'Microsoft Edge TTS (Free)',
         language: voice,
