@@ -1,18 +1,20 @@
 import { useFadeIn } from "@/hooks/useFadeIn";
-
-const expertise = [
-  { icon: "\u{1F9E0}", label: "Large Language Models & Generative AI" },
-  { icon: "\u{1F916}", label: "Agentic AI & Autonomous Systems" },
-  { icon: "\u{1F50D}", label: "RAG & Knowledge Retrieval" },
-  { icon: "\u{1F3AF}", label: "MLOps & Production Deployment" },
-  { icon: "\u{1F5E3}", label: "Voice AI & Conversational Interfaces" },
-  { icon: "\u26A1", label: "Intelligent Process Automation" },
-  { icon: "\u{1F310}", label: "Multi-modal & Multi-lingual AI" },
-  { icon: "\u{1F6E1}", label: "Responsible & Ethical AI" },
-];
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function StatsBand() {
+  const { t } = useLanguage();
   const fade = useFadeIn();
+
+  const expertise = [
+    { icon: "\u{1F9E0}", label: t.stats.stat1 },
+    { icon: "\u{1F916}", label: t.stats.stat2 },
+    { icon: "\u{1F50D}", label: t.stats.stat3 },
+    { icon: "\u{1F3AF}", label: t.stats.stat4 },
+    { icon: "\u{1F5E3}", label: t.stats.stat5 },
+    { icon: "\u26A1", label: t.stats.stat6 },
+    { icon: "\u{1F310}", label: t.stats.stat7 },
+    { icon: "\u{1F6E1}", label: t.stats.stat8 },
+  ];
 
   return (
     <div
@@ -24,10 +26,10 @@ export default function StatsBand() {
       <div className="max-w-[1100px] mx-auto">
         <div className="text-center mb-8">
           <div className="text-[0.6rem] font-bold tracking-[3px] uppercase text-cyan-2/70 mb-1">
-            Core Competencies
+            {t.stats.sectionLabel}
           </div>
           <h3 className="font-syne text-lg font-bold text-white/90 tracking-[-0.5px]">
-            Deep Expertise Across the AI Stack
+            {t.stats.heading}
           </h3>
         </div>
         <div className="grid grid-cols-4 gap-3 max-[900px]:grid-cols-2 max-[480px]:grid-cols-2">

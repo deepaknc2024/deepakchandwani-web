@@ -1,4 +1,5 @@
 import { useSlideshow } from "@/hooks/useSlideshow";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { AuthGate } from "@/components/auth/AuthGate";
 import { SlideContainer } from "@/components/bse/SlideContainer";
 import { TopBar } from "@/components/bse/TopBar";
@@ -28,6 +29,7 @@ export default function BseMeetingPage({
   slug = "bse-meeting",
 }: BseMeetingPageProps) {
   const slideshow = useSlideshow(TOTAL_SLIDES);
+  const { t } = useLanguage();
 
   const slideComponents = [
     <TitleSlide key={0} />,
@@ -45,7 +47,7 @@ export default function BseMeetingPage({
   ];
 
   return (
-    <AuthGate slug={slug} title="BSE Founders Meeting">
+    <AuthGate slug={slug} title={t.bse.authTitle}>
       <div
         className="h-screen w-screen overflow-hidden font-dm"
         style={{ background: "#334155" }}

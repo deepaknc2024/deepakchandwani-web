@@ -1,25 +1,20 @@
 import { useState, useEffect, useRef } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface TranscriptInputProps {
   onSubmit: (url: string) => void;
   loading: boolean;
 }
 
-export default function TranscriptInput({
-  onSubmit,
-  loading,
-}: TranscriptInputProps) {
+export default function TranscriptInput({ onSubmit, loading }: TranscriptInputProps) {
+  const { t } = useLanguage();
   const [url, setUrl] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Paste detection
   useEffect(() => {
     function handlePaste() {
-      // small delay so the pasted value is in the input
       setTimeout(() => {
-        if (inputRef.current?.value) {
-          setUrl(inputRef.current.value);
-        }
+        if (inputRef.current?.value) setUrl(inputRef.current.value);
       }, 50);
     }
     const el = inputRef.current;
@@ -34,7 +29,6 @@ export default function TranscriptInput({
 
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-[#1e1b4b] via-[#312e81] via-30% to-[#164e63] px-6 py-16 text-center md:py-20">
-      {/* Particles background */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {Array.from({ length: 16 }).map((_, i) => (
           <div
@@ -53,10 +47,9 @@ export default function TranscriptInput({
       </div>
 
       <div className="relative z-10 mx-auto max-w-[740px]">
-        {/* Badge */}
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-[#a5f3fc]">
           <span className="block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan" />
-          AI-Powered Tool
+          {t.transcript.badge}
         </div>
 
         <h1 className="mb-4 font-space text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
@@ -69,17 +62,12 @@ export default function TranscriptInput({
         </h1>
 
         <p className="mx-auto mb-10 max-w-[520px] text-base text-white/65">
-          Paste any YouTube URL and instantly extract the full transcript
-          &mdash; searchable, copyable, and downloadable.
+          {t.transcript.description}
         </p>
 
-        {/* Input card */}
-        <form
-          onSubmit={handleSubmit}
-          className="mx-auto max-w-[700px] rounded-3xl border border-white/15 bg-white/7 p-6 shadow-2xl backdrop-blur-xl"
-        >
+        <form onSubmit={handleSubmit} className="mx-auto max-w-[700px] rounded-3xl border border-white/15 bg-white/7 p-6 shadow-2xl backdrop-blur-xl">
           <label className="mb-3 block text-left text-sm font-bold text-white/70 tracking-wide">
-            {"\ud83d\udd17"} Paste your YouTube URL
+            {"\ud83d\udd17"} {t.transcript.placeholder}
           </label>
           <div className="flex gap-3 max-sm:flex-col">
             <input
@@ -87,9 +75,7 @@ export default function TranscriptInput({
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSubmit(e);
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(e); }}
               placeholder="https://www.youtube.com/watch?v=..."
               autoComplete="off"
               spellCheck={false}
@@ -103,26 +89,18 @@ export default function TranscriptInput({
               {loading ? (
                 <>
                   <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  Extracting...
+                  {t.transcript.extracting}
                 </>
               ) : (
-                <>
-                  {"\u26a1"} Extract
-                </>
+                <>{"\u26a1"} {t.transcript.extract}</>
               )}
             </button>
           </div>
           <div className="mt-3 text-left text-xs text-white/45">
-            Works with:{" "}
-            <code className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[0.76rem] text-[#a5f3fc]">
-              youtube.com/watch?v=...
-            </code>{" "}
-            <code className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[0.76rem] text-[#a5f3fc]">
-              youtu.be/...
-            </code>{" "}
-            <code className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[0.76rem] text-[#a5f3fc]">
-              youtube.com/shorts/...
-            </code>
+            {t.transcript.worksWith}{" "}
+            <code className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[0.76rem] text-[#a5f3fc]">youtube.com/watch?v=...</code>{" "}
+            <code className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[0.76rem] text-[#a5f3fc]">youtu.be/...</code>{" "}
+            <code className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[0.76rem] text-[#a5f3fc]">youtube.com/shorts/...</code>
           </div>
         </form>
       </div>

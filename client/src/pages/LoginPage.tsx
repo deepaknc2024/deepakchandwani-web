@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 declare global {
   interface Window {
@@ -17,6 +18,7 @@ declare global {
 
 export default function LoginPage() {
   const { login, signup, loginWithGoogle, isAuthenticated } = useAuthContext();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '/';
@@ -30,12 +32,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) navigate(redirectTo, { replace: true });
   }, [isAuthenticated, navigate, redirectTo]);
 
-  // Load Google Sign-In script
   useEffect(() => {
     let script: HTMLScriptElement | null = null;
 
@@ -103,50 +103,43 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-cyan-2/5 px-4">
       <div className="w-full max-w-md">
-        {/* Card */}
         <div className="rounded-2xl border border-bdl bg-white p-8 shadow-[0_8px_40px_rgba(0,0,0,0.06)]">
-          {/* Header */}
           <div className="mb-6 text-center">
             <Link to="/" className="inline-block font-syne text-3xl font-extrabold text-ink no-underline mb-2">
               D<span className="text-cyan-2">C</span>
             </Link>
             <h1 className="font-space text-xl font-bold text-ink">
-              {mode === 'login' ? 'Welcome back' : 'Create your account'}
+              {mode === 'login' ? t.login.welcomeBack : t.login.createAccount}
             </h1>
             <p className="mt-1 text-sm text-muted">
-              {mode === 'login'
-                ? 'Sign in to access all tools and features'
-                : 'Get started with a free account'}
+              {mode === 'login' ? t.login.signInDesc : t.login.signUpDesc}
             </p>
           </div>
 
-          {/* Google Sign-In */}
           <div id="google-signin-btn" className="flex justify-center mb-4" />
 
-          {/* Divider */}
           <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-bdl" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-white px-3 text-muted">or continue with email</span>
+              <span className="bg-white px-3 text-muted">{t.login.orContinueEmail}</span>
             </div>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             {mode === 'signup' && (
               <div className="flex gap-3">
                 <input
                   type="text"
-                  placeholder="First name"
+                  placeholder={t.login.firstName}
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   className="w-1/2 rounded-xl border border-bdl bg-light px-4 py-2.5 text-sm text-ink placeholder-muted/60 focus:border-cyan-2 focus:outline-none focus:ring-1 focus:ring-cyan-2 transition-colors"
                 />
                 <input
                   type="text"
-                  placeholder="Last name"
+                  placeholder={t.login.lastName}
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   className="w-1/2 rounded-xl border border-bdl bg-light px-4 py-2.5 text-sm text-ink placeholder-muted/60 focus:border-cyan-2 focus:outline-none focus:ring-1 focus:ring-cyan-2 transition-colors"
@@ -156,7 +149,7 @@ export default function LoginPage() {
 
             <input
               type="email"
-              placeholder="Email address"
+              placeholder={t.login.email}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -167,7 +160,7 @@ export default function LoginPage() {
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
+                placeholder={t.login.password}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -180,7 +173,7 @@ export default function LoginPage() {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted hover:text-ink bg-transparent border-none cursor-pointer"
               >
-                {showPassword ? 'Hide' : 'Show'}
+                {showPassword ? t.login.hide : t.login.show}
               </button>
             </div>
 
@@ -190,7 +183,7 @@ export default function LoginPage() {
                 onClick={suggestPassword}
                 className="self-start text-xs text-cyan-2 hover:text-cyan font-medium bg-transparent border-none cursor-pointer px-1"
               >
-                Suggest a strong password
+                {t.login.suggestPassword}
               </button>
             )}
 
@@ -203,26 +196,24 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full rounded-xl bg-cyan-2 py-2.5 text-sm font-bold text-white transition-all hover:bg-cyan hover:shadow-[0_4px_16px_rgba(6,182,212,0.35)] disabled:opacity-50 disabled:cursor-not-allowed mt-1"
             >
-              {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
+              {loading ? t.login.pleaseWait : mode === 'login' ? t.login.signInBtn : t.login.createAccountBtn}
             </button>
           </form>
 
-          {/* Toggle mode */}
           <p className="mt-5 text-center text-sm text-muted">
-            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+            {mode === 'login' ? t.login.noAccount + ' ' : t.login.haveAccount + ' '}
             <button
               onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); }}
               className="text-cyan-2 font-semibold hover:text-cyan bg-transparent border-none cursor-pointer"
             >
-              {mode === 'login' ? 'Sign Up' : 'Sign In'}
+              {mode === 'login' ? t.login.signUp : t.login.signInBtn}
             </button>
           </p>
         </div>
 
-        {/* Back to home */}
         <p className="mt-4 text-center text-xs text-muted">
           <Link to="/" className="text-muted hover:text-cyan-2 no-underline">
-            &larr; Back to home
+            &larr; {t.login.backHome}
           </Link>
         </p>
       </div>

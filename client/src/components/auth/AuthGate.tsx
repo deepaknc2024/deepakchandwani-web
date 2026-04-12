@@ -1,5 +1,6 @@
 import { useState, type ReactNode, type FormEvent } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface AuthGateProps {
   slug: string;
@@ -9,12 +10,13 @@ interface AuthGateProps {
 
 export function AuthGate({ slug, title, children }: AuthGateProps) {
   const { isAuthenticated, isLoading, error, verify } = useAuth(slug);
+  const { t } = useLanguage();
   const [password, setPassword] = useState("");
 
   if (isLoading && !isAuthenticated) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-cyan-2/30">
-        <div className="text-light text-lg font-dm">Loading...</div>
+        <div className="text-light text-lg font-dm">{t.auth.loading}</div>
       </div>
     );
   }
@@ -37,7 +39,7 @@ export function AuthGate({ slug, title, children }: AuthGateProps) {
             {title}
           </h1>
           <p className="text-sm text-slate-300">
-            Enter the password to access this content
+            {t.auth.enterPassword}
           </p>
         </div>
 
@@ -46,7 +48,7 @@ export function AuthGate({ slug, title, children }: AuthGateProps) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
+            placeholder={t.login.password}
             autoFocus
             className="w-full rounded-xl border border-slate-400/30 bg-white/10 px-4 py-3 font-dm text-white placeholder-slate-400 backdrop-blur-sm transition-colors focus:border-cyan-2 focus:outline-none focus:ring-1 focus:ring-cyan-2"
           />
@@ -60,7 +62,7 @@ export function AuthGate({ slug, title, children }: AuthGateProps) {
             disabled={isLoading || !password.trim()}
             className="w-full rounded-xl bg-gradient-to-r from-cyan-2 to-indigo py-3 font-dm text-sm font-bold text-white transition-all hover:shadow-lg hover:shadow-cyan-2/25 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? "Verifying..." : "Submit"}
+            {isLoading ? t.auth.verifying : t.auth.submit}
           </button>
         </form>
       </div>

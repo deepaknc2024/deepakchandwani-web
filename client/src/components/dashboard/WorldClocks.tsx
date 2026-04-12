@@ -1,4 +1,5 @@
 import { useClocks } from "@/hooks/useClocks";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function ClockCard({
   flag,
@@ -35,19 +36,20 @@ function ClockCard({
 
 export default function WorldClocks() {
   const clocks = useClocks();
+  const { t } = useLanguage();
 
   return (
     <div className="grid grid-cols-2 gap-2">
       <ClockCard
         flag={"\ud83c\uddee\ud83c\uddf3"}
-        city="India"
-        tz="IST"
+        city={t.dashboard.indiaLabel}
+        tz={t.dashboard.istLabel}
         data={clocks.india}
       />
       <ClockCard
         flag={"\ud83c\uddfa\ud83c\uddf8"}
-        city="New York"
-        tz="ET"
+        city={t.dashboard.nyLabel}
+        tz={t.dashboard.etLabel}
         data={clocks.newYork}
       />
     </div>

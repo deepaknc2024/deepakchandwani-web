@@ -1,3 +1,5 @@
+import { useLanguage } from "@/contexts/LanguageContext";
+
 interface TopBarProps {
   current: number;
   total: number;
@@ -17,11 +19,11 @@ export function TopBar({
   stopAutoplay,
   restart,
 }: TopBarProps) {
+  const { t } = useLanguage();
   const progress = ((current + 1) / total) * 100;
 
   return (
     <>
-      {/* Progress bar */}
       <div
         className="fixed left-0 top-0 h-1 rounded-r-sm transition-all duration-600 ease-[cubic-bezier(0.4,0,0.2,1)]"
         style={{
@@ -31,7 +33,6 @@ export function TopBar({
         }}
       />
 
-      {/* Top bar */}
       <div
         className="fixed left-0 right-0 top-0 flex h-[52px] items-center justify-between border-b border-slate-500/40 px-7 backdrop-blur-[14px]"
         style={{
@@ -40,17 +41,15 @@ export function TopBar({
           boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
         }}
       >
-        {/* Left: Home */}
         <div className="flex items-center gap-3">
           <a
             href="/"
             className="flex items-center gap-1.5 text-sm font-medium text-light-3 transition-colors hover:text-cyan"
           >
-            &larr; Home
+            &larr; {t.bse.topBarHome}
           </a>
         </div>
 
-        {/* Center: Dots + Counter */}
         <div className="flex items-center gap-2.5">
           <div className="flex items-center gap-1">
             {Array.from({ length: total }, (_, i) => (
@@ -70,14 +69,13 @@ export function TopBar({
           </span>
         </div>
 
-        {/* Right: Restart + Autoplay */}
         <div className="flex items-center gap-2.5">
           {current > 0 && (
             <button
               onClick={restart}
               className="flex items-center gap-1 whitespace-nowrap rounded-lg border-[1.5px] border-slate-500/50 bg-transparent px-3.5 py-1 font-dm text-xs font-semibold text-light-3 transition-all hover:border-cyan-2 hover:text-cyan-2"
             >
-              &#8634; <span className="max-sm:hidden">Restart</span>
+              &#8634; <span className="max-sm:hidden">{t.bse.topBarRestart}</span>
             </button>
           )}
           <button
@@ -89,13 +87,9 @@ export function TopBar({
             }`}
           >
             {isAutoplaying ? (
-              <>
-                &#9646;&#9646; <span className="max-sm:hidden">Pause</span>
-              </>
+              <>&#9646;&#9646; <span className="max-sm:hidden">{t.bse.topBarPause}</span></>
             ) : (
-              <>
-                &#9654; <span className="max-sm:hidden">Autoplay</span>
-              </>
+              <>&#9654; <span className="max-sm:hidden">{t.bse.topBarAutoplay}</span></>
             )}
           </button>
         </div>

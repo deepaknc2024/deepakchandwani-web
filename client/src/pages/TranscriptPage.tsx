@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useTranscript } from "@/hooks/useTranscript";
+import { useLanguage } from "@/contexts/LanguageContext";
 import TranscriptInput from "@/components/transcript/TranscriptInput";
 import TranscriptToolbar from "@/components/transcript/TranscriptToolbar";
 import TranscriptSearch from "@/components/transcript/TranscriptSearch";
@@ -7,11 +8,11 @@ import TranscriptResult from "@/components/transcript/TranscriptResult";
 
 export default function TranscriptPage() {
   const transcript = useTranscript();
+  const { t } = useLanguage();
   const [showTimestamps, setShowTimestamps] = useState(true);
   const [view, setView] = useState<"lines" | "full">("lines");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Summarize state
   const [summary, setSummary] = useState("");
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -29,9 +30,7 @@ export default function TranscriptPage() {
   const matchCount = useMemo(() => {
     const term = searchQuery.trim().toLowerCase();
     if (!term) return 0;
-    return transcript.lines.filter((l) =>
-      l.text.toLowerCase().includes(term),
-    ).length;
+    return transcript.lines.filter((l) => l.text.toLowerCase().includes(term)).length;
   }, [transcript.lines, searchQuery]);
 
   function handleSubmit(url: string) {
@@ -79,18 +78,10 @@ export default function TranscriptPage() {
           if (data === "[DONE]" || !data) continue;
           try {
             const parsed = JSON.parse(data);
-            if (parsed.error) {
-              throw new Error(parsed.error);
-            }
-            if (parsed.model) {
-              setActiveModel(parsed.model);
-            }
-            if (parsed.content) {
-              setSummary((prev) => prev + parsed.content);
-            }
-            if (parsed.usage) {
-              setSummaryUsage(parsed.usage);
-            }
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.model) setActiveModel(parsed.model);
+            if (parsed.content) setSummary((prev) => prev + parsed.content);
+            if (parsed.usage) setSummaryUsage(parsed.usage);
           } catch (e) {
             if (e instanceof Error && !e.message.includes("JSON")) throw e;
           }
@@ -107,61 +98,43 @@ export default function TranscriptPage() {
           buffer = buffer.substring(lastNewline + 1);
         }
       }
-      // Process any remaining buffer
-      if (buffer.trim()) {
-        processLines(buffer);
-      }
+      if (buffer.trim()) processLines(buffer);
     } catch (e) {
-      setSummaryError(
-        e instanceof Error ? e.message : "Summarization failed",
-      );
+      setSummaryError(e instanceof Error ? e.message : "Summarization failed");
     } finally {
       setIsSummarizing(false);
     }
   }, [transcript.lines, transcript.title]);
 
-  // Scroll to summary when it starts streaming
   useEffect(() => {
     if (summary && summaryRef.current) {
       summaryRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [summary ? "has" : "no"]); // only on first content
+  }, [summary ? "has" : "no"]);
 
   return (
     <div className="min-h-screen bg-light">
-      <TranscriptInput
-        onSubmit={handleSubmit}
-        loading={transcript.status === "loading"}
-      />
+      <TranscriptInput onSubmit={handleSubmit} loading={transcript.status === "loading"} />
 
       <div className="mx-auto max-w-[1000px] px-6 py-8">
-        {/* Error state */}
         {transcript.status === "error" && transcript.error && (
           <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red/30 bg-red/5 p-4">
             <span className="mt-0.5 flex-shrink-0 text-lg">{"\u26a0\ufe0f"}</span>
             <div>
-              <strong className="block text-sm font-bold text-red">
-                Could not fetch transcript
-              </strong>
+              <strong className="block text-sm font-bold text-red">{t.transcript.couldNotFetch}</strong>
               <p className="text-sm text-red/80">{transcript.error}</p>
             </div>
           </div>
         )}
 
-        {/* Loading state */}
         {transcript.status === "loading" && (
           <div className="py-12 text-center">
             <div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-4 border-indigo/15 border-t-indigo" />
-            <h3 className="mb-1 font-space text-lg font-bold text-ink">
-              Extracting Transcript...
-            </h3>
-            <p className="text-sm text-muted">
-              Fetching captions from YouTube (server-side)
-            </p>
+            <h3 className="mb-1 font-space text-lg font-bold text-ink">{t.transcript.extracting}</h3>
+            <p className="text-sm text-muted">{t.transcript.fetchingCaptions}</p>
           </div>
         )}
 
-        {/* Results */}
         {transcript.status === "success" && transcript.lines.length > 0 && (
           <div className="space-y-4">
             <TranscriptToolbar
@@ -176,18 +149,13 @@ export default function TranscriptPage() {
               isSummarizing={isSummarizing}
             />
 
-            {/* Summary section */}
             {(summary || isSummarizing || summaryError) && (
               <div ref={summaryRef} className="rounded-2xl border border-cyan-2/20 bg-gradient-to-br from-cyan-2/5 to-indigo/5 p-6 shadow-lg">
                 <div className="mb-4 flex flex-wrap items-center gap-2">
                   <span className="text-lg">{"\u2728"}</span>
-                  <h3 className="font-space text-lg font-bold text-ink">
-                    AI Summary
-                  </h3>
+                  <h3 className="font-space text-lg font-bold text-ink">{t.transcript.aiSummary}</h3>
                   {activeModel && (
-                    <span className="rounded-full bg-cyan-2/10 px-2.5 py-0.5 text-[0.7rem] font-semibold text-cyan-2">
-                      {activeModel}
-                    </span>
+                    <span className="rounded-full bg-cyan-2/10 px-2.5 py-0.5 text-[0.7rem] font-semibold text-cyan-2">{activeModel}</span>
                   )}
                   {isSummarizing && (
                     <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-cyan-2/30 border-t-cyan-2" />
@@ -195,9 +163,7 @@ export default function TranscriptPage() {
                 </div>
 
                 {summaryError && (
-                  <div className="rounded-xl border border-red/20 bg-red/5 p-3 text-sm text-red">
-                    {summaryError}
-                  </div>
+                  <div className="rounded-xl border border-red/20 bg-red/5 p-3 text-sm text-red">{summaryError}</div>
                 )}
 
                 {summary && (
@@ -212,12 +178,11 @@ export default function TranscriptPage() {
                       onClick={() => navigator.clipboard.writeText(summary)}
                       className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-muted shadow-sm transition-all hover:text-ink"
                     >
-                      {"\ud83d\udccb"} Copy Summary
+                      {"\ud83d\udccb"} {t.transcript.copySummary}
                     </button>
                     <button
                       onClick={() => {
                         if (isSpeaking) {
-                          // Stop any playing audio
                           window.speechSynthesis?.cancel();
                           const audio = document.getElementById("tts-audio") as HTMLAudioElement | null;
                           if (audio) { audio.pause(); audio.currentTime = 0; }
@@ -227,12 +192,10 @@ export default function TranscriptPage() {
                         }
                       }}
                       className={`rounded-lg px-3 py-1.5 text-xs font-bold shadow-sm transition-all ${
-                        isSpeaking
-                          ? "bg-red/10 text-red hover:bg-red/20"
-                          : "bg-indigo/10 text-indigo hover:bg-indigo/20"
+                        isSpeaking ? "bg-red/10 text-red hover:bg-red/20" : "bg-indigo/10 text-indigo hover:bg-indigo/20"
                       }`}
                     >
-                      {isSpeaking ? "\u23f9 Stop" : "\ud83d\udd0a Play Summary"}
+                      {isSpeaking ? `\u23f9 ${t.transcript.stop}` : `\ud83d\udd0a ${t.transcript.playSummary}`}
                     </button>
 
                     {summaryUsage && (
@@ -240,13 +203,13 @@ export default function TranscriptPage() {
                         <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm">
                           {summaryUsage.model.split('/')[1] || summaryUsage.model}
                         </span>
-                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm" title="Input tokens">
+                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm" title={t.transcript.inputTokens}>
                           In: {summaryUsage.input_tokens.toLocaleString()}
                         </span>
-                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm" title="Output tokens">
+                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm" title={t.transcript.outputTokens}>
                           Out: {summaryUsage.output_tokens.toLocaleString()}
                         </span>
-                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm font-semibold" title="Total tokens">
+                        <span className="rounded-md bg-white/80 px-2 py-0.5 shadow-sm font-semibold" title={t.transcript.totalTokens}>
                           Total: {summaryUsage.total_tokens.toLocaleString()} tokens
                         </span>
                         <span className="rounded-md bg-cyan-2/10 px-2 py-0.5 font-semibold text-cyan-2 shadow-sm" title="Cost">
@@ -279,18 +242,12 @@ export default function TranscriptPage() {
           </div>
         )}
 
-        {/* Idle state */}
         {transcript.status === "idle" && (
           <div className="py-16 text-center">
-            <span className="mb-4 block text-5xl opacity-50">
-              {"\ud83c\udfa6"}
-            </span>
-            <h3 className="mb-2 font-space text-xl font-bold text-ink">
-              Ready to extract a transcript
-            </h3>
+            <span className="mb-4 block text-5xl opacity-50">{"\ud83c\udfa6"}</span>
+            <h3 className="mb-2 font-space text-xl font-bold text-ink">{t.transcript.ready}</h3>
             <p className="mx-auto max-w-sm text-sm text-muted">
-              Paste a YouTube video URL above and click{" "}
-              <strong>Extract</strong> to get the full transcript instantly.
+              {t.transcript.description}
             </p>
           </div>
         )}
@@ -299,7 +256,6 @@ export default function TranscriptPage() {
   );
 }
 
-// Strip markdown to plain text for TTS
 function stripMarkdown(md: string): string {
   return md
     .replace(/^#{1,3}\s+/gm, '')
@@ -312,14 +268,10 @@ function stripMarkdown(md: string): string {
     .trim();
 }
 
-async function playSummary(
-  summary: string,
-  setIsSpeaking: (v: boolean) => void,
-) {
+async function playSummary(summary: string, setIsSpeaking: (v: boolean) => void) {
   const plainText = stripMarkdown(summary);
   setIsSpeaking(true);
 
-  // Try server TTS (Edge TTS free → Sarvam fallback)
   try {
     const resp = await fetch("/api/tts", {
       method: "POST",
@@ -343,11 +295,8 @@ async function playSummary(
         return;
       }
     }
-  } catch {
-    // Fall through to browser TTS
-  }
+  } catch { /* Fall through to browser TTS */ }
 
-  // Last resort: Browser Speech Synthesis
   if (window.speechSynthesis) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(plainText);
@@ -361,26 +310,17 @@ async function playSummary(
   }
 }
 
-// Simple markdown to HTML converter for summary rendering
 function markdownToHtml(md: string): string {
   return md
-    // Headers
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-    // Bold
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Bullet lists
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/(<li>.*<\/li>\n?)+/gs, '<ul>$&</ul>')
-    // Blockquotes
     .replace(/^> (.+)$/gm, '<blockquote><p>$1</p></blockquote>')
-    // Paragraphs (double newline)
     .replace(/\n\n/g, '</p><p>')
-    // Single newlines within paragraphs
     .replace(/\n/g, '<br/>')
-    // Wrap in p
     .replace(/^(.+)/, '<p>$1</p>');
 }
