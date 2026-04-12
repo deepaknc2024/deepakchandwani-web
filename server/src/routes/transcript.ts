@@ -124,21 +124,37 @@ async function fetchViaWatchPage(
     }
   }
 
-  // Extract ytInitialPlayerResponse
-  const playerMatch = html.match(
-    /ytInitialPlayerResponse\s*=\s*(\{.+?\});\s*(?:var|<\/script)/s
-  );
-  if (!playerMatch) {
-    // Check for age-restricted or login-required
+  // Extract ytInitialPlayerResponse using bracket counting (regex is too slow on 1MB+ HTML)
+  const marker = 'ytInitialPlayerResponse';
+  const markerIdx = html.indexOf(marker);
+  if (markerIdx === -1) {
     if (html.includes('Sign in to confirm your age') || html.includes('signIn')) {
       throw new Error('AGE_RESTRICTED');
     }
     throw new Error('NO_PLAYER_RESPONSE');
   }
 
+  const jsonStart = html.indexOf('{', markerIdx);
+  if (jsonStart === -1) throw new Error('NO_PLAYER_RESPONSE');
+
+  // Find matching closing brace using bracket counting
+  let depth = 0;
+  let jsonEnd = -1;
+  for (let i = jsonStart; i < html.length; i++) {
+    if (html[i] === '{') depth++;
+    else if (html[i] === '}') {
+      depth--;
+      if (depth === 0) {
+        jsonEnd = i + 1;
+        break;
+      }
+    }
+  }
+  if (jsonEnd === -1) throw new Error('PARSE_ERROR');
+
   let playerData;
   try {
-    playerData = JSON.parse(playerMatch[1]);
+    playerData = JSON.parse(html.substring(jsonStart, jsonEnd));
   } catch {
     throw new Error('PARSE_ERROR');
   }
