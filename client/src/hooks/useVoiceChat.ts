@@ -252,10 +252,15 @@ export function useVoiceChat(): UseVoiceChatReturn {
         }
 
         case "input_audio_buffer.speech_started":
+          // User started speaking — immediately interrupt the bot
           if (isBotSpeakingRef.current) {
             flushAudio();
             isBotSpeakingRef.current = false;
             setIsSpeaking(false);
+            // Tell OpenAI to cancel its current response
+            if (wsRef.current && wsRef.current.readyState === 1) {
+              wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
+            }
           }
           setStatus("hearing");
           break;
