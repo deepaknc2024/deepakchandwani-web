@@ -1,0 +1,15 @@
+{
+  "name": "deepakchandwani-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deepak Chandwani portfolio - React + Node.js + PostgreSQL",
+  "workspaces": ["client", "server"],
+  "scripts": {
+    "dev:client": "npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "build:client": "npm run build --workspace=client",
+    "build:server": "npm run build --workspace=server",
+    "build": "npm run build:client && npm run build:server",
+    "start": "npm run start --workspace=server"
+  }
+}
