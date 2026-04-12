@@ -193,7 +193,10 @@ async function fetchViaWatchPage(
   return { lines, title, tracks };
 }
 
-// ── Method 2: InnerTube API ──────────────────────────────────────────
+// ── Method 2: InnerTube API (ANDROID client — most reliable for captions) ──
+
+const ANDROID_VERSION = '20.10.38';
+const ANDROID_UA = `com.google.android.youtube/${ANDROID_VERSION} (Linux; U; Android 14)`;
 
 async function fetchViaInnerTube(
   videoId: string
@@ -203,16 +206,14 @@ async function fetchViaInnerTube(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'User-Agent': USER_AGENT,
+      'User-Agent': ANDROID_UA,
     },
     body: JSON.stringify({
       videoId,
       context: {
         client: {
-          clientName: 'WEB',
-          clientVersion: '2.20240101.00.00',
-          hl: 'en',
-          gl: 'US',
+          clientName: 'ANDROID',
+          clientVersion: ANDROID_VERSION,
         },
       },
     }),
@@ -231,23 +232,28 @@ async function fetchViaInnerTube(
   const track = pickTrack(tracks);
   if (!track) throw new Error('NO_CAPTIONS');
 
+  // Fetch captions — try XML first (more reliable), then JSON3
   let lines: TranscriptLine[] = [];
-  for (const fmt of ['json3', ''] as const) {
-    try {
-      const captionUrl = fmt
-        ? `${track.baseUrl}&fmt=${fmt}`
-        : track.baseUrl;
-      const capResp = await fetch(captionUrl, {
-        headers: { 'User-Agent': USER_AGENT },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!capResp.ok) continue;
-      const body = await capResp.text();
-      lines = fmt === 'json3' ? parseJSON3(JSON.parse(body)) : parseXML(body);
-      if (lines.length) break;
-    } catch {
-      continue;
+  for (const ua of [ANDROID_UA, USER_AGENT]) {
+    for (const fmt of ['', 'json3'] as const) {
+      try {
+        const captionUrl = fmt
+          ? `${track.baseUrl}&fmt=${fmt}`
+          : track.baseUrl;
+        const capResp = await fetch(captionUrl, {
+          headers: { 'User-Agent': ua },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!capResp.ok) continue;
+        const body = await capResp.text();
+        if (!body || body.length < 10) continue;
+        lines = fmt === 'json3' ? parseJSON3(JSON.parse(body)) : parseXML(body);
+        if (lines.length) break;
+      } catch {
+        continue;
+      }
     }
+    if (lines.length) break;
   }
 
   return { lines, title };
@@ -270,27 +276,27 @@ router.get('/transcript', async (req, res) => {
   let title = 'Untitled Video';
   const errors: string[] = [];
 
-  // Method 1: Watch page HTML parse
+  // Method 1: InnerTube ANDROID API (most reliable)
   try {
-    const result = await fetchViaWatchPage(videoId);
+    const result = await fetchViaInnerTube(videoId);
     lines = result.lines;
     title = result.title;
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown';
-    errors.push(`WatchPage: ${msg}`);
-    console.log(`[transcript] Watch page failed for ${videoId}: ${msg}`);
+    errors.push(`InnerTube: ${msg}`);
+    console.log(`[transcript] InnerTube failed for ${videoId}: ${msg}`);
   }
 
-  // Method 2: InnerTube API
+  // Method 2: Watch page HTML parse (fallback)
   if (!lines.length) {
     try {
-      const result = await fetchViaInnerTube(videoId);
+      const result = await fetchViaWatchPage(videoId);
       lines = result.lines;
       title = result.title || title;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown';
-      errors.push(`InnerTube: ${msg}`);
-      console.log(`[transcript] InnerTube failed for ${videoId}: ${msg}`);
+      errors.push(`WatchPage: ${msg}`);
+      console.log(`[transcript] Watch page failed for ${videoId}: ${msg}`);
     }
   }
 
