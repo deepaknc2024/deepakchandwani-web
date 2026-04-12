@@ -299,9 +299,6 @@ export default function TranscriptPage() {
   );
 }
 
-// Hidden audio element for Sarvam TTS playback
-// (added outside component to avoid re-renders)
-
 // Strip markdown to plain text for TTS
 function stripMarkdown(md: string): string {
   return md
@@ -322,7 +319,7 @@ async function playSummary(
   const plainText = stripMarkdown(summary);
   setIsSpeaking(true);
 
-  // Try Sarvam TTS first
+  // Try server TTS (Edge TTS free → Sarvam fallback)
   try {
     const resp = await fetch("/api/tts", {
       method: "POST",
@@ -332,14 +329,14 @@ async function playSummary(
     if (resp.ok) {
       const data = await resp.json();
       if (data.ok && data.audio) {
-        // Play base64 audio
         let audio = document.getElementById("tts-audio") as HTMLAudioElement | null;
         if (!audio) {
           audio = document.createElement("audio");
           audio.id = "tts-audio";
           document.body.appendChild(audio);
         }
-        audio.src = `data:audio/wav;base64,${data.audio}`;
+        const mime = data.format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+        audio.src = `data:${mime};base64,${data.audio}`;
         audio.onended = () => setIsSpeaking(false);
         audio.onerror = () => setIsSpeaking(false);
         await audio.play();
@@ -350,7 +347,7 @@ async function playSummary(
     // Fall through to browser TTS
   }
 
-  // Fallback: Browser Speech Synthesis
+  // Last resort: Browser Speech Synthesis
   if (window.speechSynthesis) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(plainText);
