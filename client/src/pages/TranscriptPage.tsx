@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useTranscript } from "@/hooks/useTranscript";
 import TranscriptInput from "@/components/transcript/TranscriptInput";
 import TranscriptToolbar from "@/components/transcript/TranscriptToolbar";
@@ -10,6 +10,12 @@ export default function TranscriptPage() {
   const [showTimestamps, setShowTimestamps] = useState(true);
   const [view, setView] = useState<"lines" | "full">("lines");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Summarize state
+  const [summary, setSummary] = useState("");
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
 
   const matchCount = useMemo(() => {
     const term = searchQuery.trim().toLowerCase();
@@ -23,8 +29,81 @@ export default function TranscriptPage() {
     setSearchQuery("");
     setView("lines");
     setShowTimestamps(true);
+    setSummary("");
+    setSummaryError(null);
     transcript.fetch(url);
   }
+
+  const handleSummarize = useCallback(async () => {
+    if (!transcript.lines.length) return;
+
+    setIsSummarizing(true);
+    setSummary("");
+    setSummaryError(null);
+
+    const fullText = transcript.lines.map((l) => l.text).join(" ");
+
+    try {
+      const resp = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: fullText, title: transcript.title }),
+      });
+
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || "Summarization failed");
+      }
+
+      const reader = resp.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+            if (parsed.content) {
+              setSummary((prev) => prev + parsed.content);
+            }
+          } catch (e) {
+            if (e instanceof Error && e.message !== "[DONE]") {
+              // Only throw actual errors, not parse issues from [DONE]
+              if (data !== "[DONE]") throw e;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      setSummaryError(
+        e instanceof Error ? e.message : "Summarization failed",
+      );
+    } finally {
+      setIsSummarizing(false);
+    }
+  }, [transcript.lines, transcript.title]);
+
+  // Scroll to summary when it starts streaming
+  useEffect(() => {
+    if (summary && summaryRef.current) {
+      summaryRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [summary ? "has" : "no"]); // only on first content
 
   return (
     <div className="min-h-screen bg-light">
@@ -71,7 +150,47 @@ export default function TranscriptPage() {
               onToggleTimestamps={() => setShowTimestamps((v) => !v)}
               view={view}
               onChangeView={setView}
+              onSummarize={handleSummarize}
+              isSummarizing={isSummarizing}
             />
+
+            {/* Summary section */}
+            {(summary || isSummarizing || summaryError) && (
+              <div ref={summaryRef} className="rounded-2xl border border-cyan-2/20 bg-gradient-to-br from-cyan-2/5 to-indigo/5 p-6 shadow-lg">
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="text-lg">{"\u2728"}</span>
+                  <h3 className="font-space text-lg font-bold text-ink">
+                    AI Summary
+                  </h3>
+                  {isSummarizing && (
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-cyan-2/30 border-t-cyan-2" />
+                  )}
+                </div>
+
+                {summaryError && (
+                  <div className="rounded-xl border border-red/20 bg-red/5 p-3 text-sm text-red">
+                    {summaryError}
+                  </div>
+                )}
+
+                {summary && (
+                  <div className="prose prose-sm max-w-none text-body [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:font-space [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-ink [&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:font-space [&_h3]:text-sm [&_h3]:font-bold [&_h3]:text-ink [&_ul]:my-2 [&_ul]:space-y-1 [&_li]:text-sm [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-2 [&_strong]:text-ink [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-2/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted">
+                    <div dangerouslySetInnerHTML={{ __html: markdownToHtml(summary) }} />
+                  </div>
+                )}
+
+                {!isSummarizing && summary && (
+                  <div className="mt-4 flex gap-2 border-t border-cyan-2/10 pt-3">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(summary)}
+                      className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-muted shadow-sm transition-all hover:text-ink"
+                    >
+                      {"\ud83d\udccb"} Copy Summary
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <TranscriptSearch
               query={searchQuery}
@@ -111,4 +230,28 @@ export default function TranscriptPage() {
       </div>
     </div>
   );
+}
+
+// Simple markdown to HTML converter for summary rendering
+function markdownToHtml(md: string): string {
+  return md
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Bullet lists
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/gs, '<ul>$&</ul>')
+    // Blockquotes
+    .replace(/^> (.+)$/gm, '<blockquote><p>$1</p></blockquote>')
+    // Paragraphs (double newline)
+    .replace(/\n\n/g, '</p><p>')
+    // Single newlines within paragraphs
+    .replace(/\n/g, '<br/>')
+    // Wrap in p
+    .replace(/^(.+)/, '<p>$1</p>');
 }

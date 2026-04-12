@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { config } from '../config.js';
 
 const router = Router();
 
@@ -381,6 +382,122 @@ router.get('/transcript-proxy', async (req, res) => {
   } catch (err) {
     console.error('Transcript proxy error:', err);
     res.status(502).json({ ok: false, error: 'Failed to fetch transcript' });
+  }
+});
+
+// ── Summarize transcript via OpenRouter ──────────────────────────────
+
+router.post('/summarize', async (req, res) => {
+  const { transcript, title } = req.body as { transcript?: string; title?: string };
+
+  if (!transcript || transcript.length < 20) {
+    return res.status(400).json({ ok: false, error: 'Transcript text is required' });
+  }
+
+  if (!config.openrouterApiKey) {
+    return res.status(500).json({ ok: false, error: 'Summarization service not configured' });
+  }
+
+  // Truncate very long transcripts to ~12000 words to stay within context limits
+  const words = transcript.split(/\s+/);
+  const truncated = words.length > 12000 ? words.slice(0, 12000).join(' ') + '\n\n[Transcript truncated...]' : transcript;
+
+  const systemPrompt = `You are an expert content summarizer. Your job is to create a comprehensive, detailed summary of a YouTube video transcript.
+
+RULES:
+- Write a DETAILED summary — not a short abstract. Cover all major points, arguments, examples, and conclusions discussed in the video.
+- Structure the summary with clear sections using markdown headers (##).
+- Include key quotes or specific details where they add value.
+- Use bullet points for lists of items or steps.
+- If the speaker mentions specific data, numbers, names, or resources — include them.
+- Write in third person ("The speaker discusses..." or "The video covers...").
+- The summary should be long enough that someone who reads it gets a thorough understanding of the video content without watching it.
+- End with a "Key Takeaways" section with 3-5 bullet points.`;
+
+  const userPrompt = title
+    ? `Summarize this YouTube video transcript in detail.\n\nVideo Title: "${title}"\n\nTranscript:\n${truncated}`
+    : `Summarize this YouTube video transcript in detail.\n\nTranscript:\n${truncated}`;
+
+  try {
+    // Stream the response for better UX
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.openrouterApiKey}`,
+        'HTTP-Referer': 'https://web.deepakchandwani.com',
+        'X-Title': 'Deepak Chandwani - Transcript Summarizer',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-001',
+        stream: true,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 4000,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('[summarize] OpenRouter error:', response.status, err);
+      res.write(`data: ${JSON.stringify({ error: 'Summarization failed. Please try again.' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      res.write(`data: ${JSON.stringify({ error: 'No response stream' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') {
+          res.write('data: [DONE]\n\n');
+          continue;
+        }
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            res.write(`data: ${JSON.stringify({ content })}\n\n`);
+          }
+        } catch {
+          // skip malformed chunks
+        }
+      }
+    }
+
+    res.end();
+  } catch (err) {
+    console.error('[summarize] Error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: 'Summarization failed' });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: 'Stream interrupted' })}\n\n`);
+      res.end();
+    }
   }
 });
 

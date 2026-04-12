@@ -9,6 +9,8 @@ interface TranscriptToolbarProps {
   onToggleTimestamps: () => void;
   view: "lines" | "full";
   onChangeView: (view: "lines" | "full") => void;
+  onSummarize: () => void;
+  isSummarizing: boolean;
 }
 
 export default function TranscriptToolbar({
@@ -19,6 +21,8 @@ export default function TranscriptToolbar({
   onToggleTimestamps,
   view,
   onChangeView,
+  onSummarize,
+  isSummarizing,
 }: TranscriptToolbarProps) {
   function copyAll() {
     const text = lines
@@ -79,6 +83,22 @@ export default function TranscriptToolbar({
             className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-green/10 to-green/20 px-3 py-2 text-xs font-bold text-green transition-all hover:bg-green hover:text-white"
           >
             {"\u2b07"} Download
+          </button>
+          <button
+            onClick={onSummarize}
+            disabled={isSummarizing}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-cyan-2 to-indigo px-4 py-2 text-xs font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:pointer-events-none disabled:opacity-60"
+          >
+            {isSummarizing ? (
+              <>
+                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Summarizing...
+              </>
+            ) : (
+              <>
+                {"\u2728"} Summarize
+              </>
+            )}
           </button>
         </div>
       </div>
