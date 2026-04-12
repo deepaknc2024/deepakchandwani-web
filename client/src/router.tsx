@@ -23,7 +23,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "/bse-design",
-        element: <BseMeetingPage slug="design" />,
+        element: <BseMeetingPage slug="bse-design" />,
       },
       {
         path: "*",

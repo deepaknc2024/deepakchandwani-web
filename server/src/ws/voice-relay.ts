@@ -110,14 +110,26 @@ export function setupVoiceRelay(server: http.Server) {
     });
 
     // Cleanup on upstream close
-    upstream.on('close', () => {
-      console.log('[voice-relay] OpenAI connection closed');
+    upstream.on('close', (code, reason) => {
+      console.log(`[voice-relay] OpenAI connection closed: code=${code} reason=${reason?.toString()}`);
       cleanup();
     });
 
     upstream.on('error', (err) => {
-      console.error('[voice-relay] OpenAI error:', err);
+      console.error('[voice-relay] OpenAI error:', (err as Error).message || err);
       cleanup();
+    });
+
+    upstream.on('unexpected-response', (_req, res) => {
+      let body = '';
+      res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+      res.on('end', () => {
+        console.error(`[voice-relay] OpenAI rejected: HTTP ${res.statusCode} - ${body}`);
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({ type: 'error', message: `OpenAI error: ${res.statusCode}` }));
+          clientWs.close();
+        }
+      });
     });
 
     // Cleanup on client close
