@@ -22,6 +22,7 @@ export default function TranscriptPage() {
     cost_usd: number;
     model: string;
   } | null>(null);
+  const [activeModel, setActiveModel] = useState<string | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
 
   const matchCount = useMemo(() => {
@@ -48,6 +49,7 @@ export default function TranscriptPage() {
     setSummary("");
     setSummaryError(null);
     setSummaryUsage(null);
+    setActiveModel(null);
 
     const fullText = transcript.lines.map((l) => l.text).join(" ");
 
@@ -79,11 +81,13 @@ export default function TranscriptPage() {
             if (parsed.error) {
               throw new Error(parsed.error);
             }
+            if (parsed.model) {
+              setActiveModel(parsed.model);
+            }
             if (parsed.content) {
               setSummary((prev) => prev + parsed.content);
             }
             if (parsed.usage) {
-              console.log("[summarize] Usage received:", parsed.usage);
               setSummaryUsage(parsed.usage);
             }
           } catch (e) {
@@ -174,11 +178,16 @@ export default function TranscriptPage() {
             {/* Summary section */}
             {(summary || isSummarizing || summaryError) && (
               <div ref={summaryRef} className="rounded-2xl border border-cyan-2/20 bg-gradient-to-br from-cyan-2/5 to-indigo/5 p-6 shadow-lg">
-                <div className="mb-4 flex items-center gap-2">
+                <div className="mb-4 flex flex-wrap items-center gap-2">
                   <span className="text-lg">{"\u2728"}</span>
                   <h3 className="font-space text-lg font-bold text-ink">
                     AI Summary
                   </h3>
+                  {activeModel && (
+                    <span className="rounded-full bg-cyan-2/10 px-2.5 py-0.5 text-[0.7rem] font-semibold text-cyan-2">
+                      {activeModel}
+                    </span>
+                  )}
                   {isSummarizing && (
                     <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-cyan-2/30 border-t-cyan-2" />
                   )}

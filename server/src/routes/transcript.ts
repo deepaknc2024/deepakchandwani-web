@@ -420,36 +420,58 @@ RULES:
     ? `Summarize this YouTube video transcript in detail.\n\nVideo Title: "${title}"\n\nTranscript:\n${truncated}`
     : `Summarize this YouTube video transcript in detail.\n\nTranscript:\n${truncated}`;
 
+  // Models to try in order: free first, then paid fallback
+  const MODELS = [
+    { id: 'openai/gpt-oss-120b:free', label: 'OpenAI GPT-OSS 120B (Free)' },
+    { id: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0 Flash' },
+  ];
+
   try {
     // Stream the response for better UX
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.openrouterApiKey}`,
-        'HTTP-Referer': 'https://web.deepakchandwani.com',
-        'X-Title': 'Deepak Chandwani - Transcript Summarizer',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
-        stream: true,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 4000,
-        temperature: 0.3,
-      }),
-    });
+    let response: Response | null = null;
+    let usedModel = MODELS[0];
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('[summarize] OpenRouter error:', response.status, err);
-      res.write(`data: ${JSON.stringify({ error: 'Summarization failed. Please try again.' })}\n\n`);
+    for (const model of MODELS) {
+      console.log(`[summarize] Trying model: ${model.id}`);
+      const attempt = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.openrouterApiKey}`,
+          'HTTP-Referer': 'https://web.deepakchandwani.com',
+          'X-Title': 'Deepak Chandwani - Transcript Summarizer',
+        },
+        body: JSON.stringify({
+          model: model.id,
+          stream: true,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: 4000,
+          temperature: 0.3,
+        }),
+      });
+
+      if (attempt.ok) {
+        response = attempt;
+        usedModel = model;
+        console.log(`[summarize] Using model: ${model.label}`);
+        // Tell client which model is being used
+        res.write(`data: ${JSON.stringify({ model: model.label })}\n\n`);
+        break;
+      } else {
+        const err = await attempt.text();
+        console.log(`[summarize] ${model.id} failed (${attempt.status}): ${err.substring(0, 200)}`);
+      }
+    }
+
+    if (!response) {
+      res.write(`data: ${JSON.stringify({ error: 'All models failed. Please try again later.' })}\n\n`);
       res.end();
       return;
     }
@@ -516,7 +538,7 @@ RULES:
           output_tokens: outputTokens,
           total_tokens: totalTokens,
           cost_usd: costUsd,
-          model: 'google/gemini-2.0-flash-001',
+          model: usedModel.label,
         }
       })}\n\n`);
     }
