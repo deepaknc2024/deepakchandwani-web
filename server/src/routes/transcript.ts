@@ -55,20 +55,48 @@ function parseJSON3(data: {
     .filter((l) => l.text && l.text !== '\n');
 }
 
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)));
+}
+
 function parseXML(xml: string): TranscriptLine[] {
   const lines: TranscriptLine[] = [];
-  const regex = /<text start="([^"]+)" dur="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g;
+
+  // Format 1: New YouTube format <p t="ms" d="ms">...<s>text</s>...</p>
+  const pRegex = /<p\s+t="(\d+)"\s+d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
   let match;
-  while ((match = regex.exec(xml)) !== null) {
-    const text = match[3]
-      .replace(/<[^>]+>/g, '')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&#39;/g, "'")
-      .replace(/&quot;/g, '"')
-      .replace(/\n/g, ' ')
-      .trim();
+  while ((match = pRegex.exec(xml)) !== null) {
+    const offsetMs = parseInt(match[1], 10);
+    const durMs = parseInt(match[2], 10);
+    const inner = match[3];
+    // Extract text from <s> tags if present, otherwise use raw inner text
+    let text = '';
+    const sRegex = /<s[^>]*>([^<]*)<\/s>/g;
+    let sMatch;
+    while ((sMatch = sRegex.exec(inner)) !== null) {
+      text += sMatch[1];
+    }
+    if (!text) text = inner.replace(/<[^>]+>/g, '');
+    text = decodeEntities(text).trim();
+    if (text) {
+      lines.push({ start: offsetMs / 1000, dur: durMs / 1000, text });
+    }
+  }
+
+  if (lines.length) return lines;
+
+  // Format 2: Old YouTube format <text start="sec" dur="sec">text</text>
+  const textRegex = /<text start="([^"]+)" dur="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g;
+  while ((match = textRegex.exec(xml)) !== null) {
+    const text = decodeEntities(match[3].replace(/<[^>]+>/g, '').replace(/\n/g, ' ')).trim();
     if (text) {
       lines.push({
         start: parseFloat(match[1]),
@@ -77,6 +105,7 @@ function parseXML(xml: string): TranscriptLine[] {
       });
     }
   }
+
   return lines;
 }
 
