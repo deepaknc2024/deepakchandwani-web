@@ -46,12 +46,41 @@ function pickTrack(tracks: CaptionTrack[]): CaptionTrack {
 
 // ── Fetch caption lines from a track URL ──────────────────────────────
 
+async function fetchViaServerProxy(baseUrl: string): Promise<TranscriptLine[]> {
+  // Use our server-side proxy — most reliable, no CORS issues
+  const timedtextUrl = `${baseUrl}&fmt=json3`;
+  const r = await fetch(`/api/transcript-proxy?url=${encodeURIComponent(timedtextUrl)}`, {
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!r.ok) throw new Error(`Server proxy returned ${r.status}`);
+  const data = await r.json();
+  const lines = parseJSON3(data);
+  if (lines.length) return lines;
+
+  // Try VTT format via server proxy
+  const vttUrl = `${baseUrl}&fmt=vtt`;
+  const r2 = await fetch(`/api/transcript-proxy?url=${encodeURIComponent(vttUrl)}`, {
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!r2.ok) throw new Error(`Server proxy VTT returned ${r2.status}`);
+  return parseVTT(await r2.text());
+}
+
 async function fetchLines(baseUrl: string): Promise<TranscriptLine[]> {
-  // Try direct fetch first (works when YouTube sets CORS headers)
+  // Method A: Server-side proxy (most reliable — no CORS issues)
+  if (baseUrl.includes("youtube.com/api/timedtext")) {
+    try {
+      const lines = await fetchViaServerProxy(baseUrl);
+      if (lines.length) return lines;
+    } catch {
+      // fall through to client-side methods
+    }
+  }
+
+  // Method B: Direct fetch (rarely works due to CORS)
   for (const fmt of ["json3", "vtt"] as const) {
     try {
       const r = await fetch(`${baseUrl}&fmt=${fmt}`, {
-        credentials: "include",
         signal: AbortSignal.timeout(10000),
       });
       if (!r.ok) continue;
@@ -65,7 +94,7 @@ async function fetchLines(baseUrl: string): Promise<TranscriptLine[]> {
     }
   }
 
-  // Fallback: CORS proxy
+  // Method C: CORS proxy fallback
   try {
     const r = await proxyFetch(`${baseUrl}&fmt=json3`);
     const j = await r.json();

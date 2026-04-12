@@ -1,13 +1,13 @@
 import { Router } from 'express';
 
-const ALLOWED_PREFIX = /^https:\/\/www\.youtube\.com\/api\/timedtext\?/;
+const ALLOWED_PATTERN = /^https:\/\/(www\.)?youtube\.com\/api\/timedtext\?/;
 
 const router = Router();
 
 router.get('/transcript-proxy', async (req, res) => {
   const url = req.query.url as string | undefined;
 
-  if (!url || !ALLOWED_PREFIX.test(url)) {
+  if (!url || !ALLOWED_PATTERN.test(url)) {
     return res.status(400).json({ ok: false, error: 'Invalid or disallowed URL' });
   }
 
