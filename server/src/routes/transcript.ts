@@ -500,11 +500,15 @@ RULES:
     }
 
     // Send usage/cost info as the final event
+    console.log('[summarize] Usage captured:', usage ? 'yes' : 'no', JSON.stringify(usage)?.substring(0, 200));
     if (usage) {
       const inputTokens = usage.prompt_tokens || 0;
       const outputTokens = usage.completion_tokens || 0;
       const totalTokens = usage.total_tokens || (inputTokens + outputTokens);
-      const costUsd = (inputTokens * INPUT_COST_PER_TOKEN) + (outputTokens * OUTPUT_COST_PER_TOKEN);
+      // Use OpenRouter's reported cost if available, otherwise calculate
+      const costUsd = (usage as Record<string, unknown>).cost
+        ? Number((usage as Record<string, unknown>).cost)
+        : (inputTokens * INPUT_COST_PER_TOKEN) + (outputTokens * OUTPUT_COST_PER_TOKEN);
 
       res.write(`data: ${JSON.stringify({
         usage: {
