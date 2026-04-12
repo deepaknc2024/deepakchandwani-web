@@ -1,33 +1,33 @@
 import { useState, useCallback, useMemo } from "react";
 import type { TranscriptLine } from "@/types";
-import { fetchTranscript } from "@/lib/transcript-engine";
 
 type Status = "idle" | "loading" | "success" | "error";
 
-interface TranscriptState {
-  status: Status;
-  lines: TranscriptLine[];
-  title: string;
-  wordCount: number;
-  readTime: number;
-  error: string | null;
-  fetch: (url: string) => Promise<void>;
-  clear: () => void;
+function extractVideoId(url: string): string | null {
+  const patterns = [
+    /[?&]v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /\/embed\/([a-zA-Z0-9_-]{11})/,
+    /\/shorts\/([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  if (/^[a-zA-Z0-9_-]{11}$/.test(url.trim())) return url.trim();
+  return null;
 }
 
-export function useTranscript(): TranscriptState {
+export function useTranscript() {
   const [status, setStatus] = useState<Status>("idle");
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [videoId, setVideoId] = useState<string | null>(null);
 
   const wordCount = useMemo(
-    () =>
-      lines.reduce(
-        (n, l) => n + l.text.split(/\s+/).filter(Boolean).length,
-        0
-      ),
-    [lines]
+    () => lines.reduce((n, l) => n + l.text.split(/\s+/).filter(Boolean).length, 0),
+    [lines],
   );
 
   const readTime = useMemo(() => Math.ceil(wordCount / 200), [wordCount]);
@@ -37,19 +37,24 @@ export function useTranscript(): TranscriptState {
     setError(null);
     setLines([]);
     setTitle("");
+
+    const vid = extractVideoId(url);
+    setVideoId(vid);
+
     try {
-      const result = await fetchTranscript(url);
-      setLines(result.lines);
-      setTitle(result.title);
+      const resp = await fetch(`/api/transcript?url=${encodeURIComponent(url)}`);
+      const data = await resp.json();
+
+      if (!resp.ok || !data.ok) {
+        throw new Error(data.error || "Failed to fetch transcript");
+      }
+
+      setLines(data.lines);
+      setTitle(data.title);
+      setVideoId(data.videoId);
       setStatus("success");
     } catch (e) {
-      let msg =
-        e instanceof Error ? e.message : "An unexpected error occurred.";
-      if (msg === "PROXY_FAIL" || msg.includes("proxy")) {
-        msg =
-          "Network error: Could not reach YouTube. Please check your internet connection and try again.";
-      }
-      setError(msg);
+      setError(e instanceof Error ? e.message : "An unexpected error occurred.");
       setStatus("error");
     }
   }, []);
@@ -59,16 +64,8 @@ export function useTranscript(): TranscriptState {
     setLines([]);
     setTitle("");
     setError(null);
+    setVideoId(null);
   }, []);
 
-  return {
-    status,
-    lines,
-    title,
-    wordCount,
-    readTime,
-    error,
-    fetch: fetchUrl,
-    clear,
-  };
+  return { status, lines, title, wordCount, readTime, error, videoId, fetch: fetchUrl, clear };
 }

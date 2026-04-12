@@ -10,18 +10,16 @@ export default function TranscriptPage() {
   const [showTimestamps, setShowTimestamps] = useState(true);
   const [view, setView] = useState<"lines" | "full">("lines");
   const [searchQuery, setSearchQuery] = useState("");
-  const [videoUrl, setVideoUrl] = useState("");
 
   const matchCount = useMemo(() => {
     const term = searchQuery.trim().toLowerCase();
     if (!term) return 0;
     return transcript.lines.filter((l) =>
-      l.text.toLowerCase().includes(term)
+      l.text.toLowerCase().includes(term),
     ).length;
   }, [transcript.lines, searchQuery]);
 
   function handleSubmit(url: string) {
-    setVideoUrl(url);
     setSearchQuery("");
     setView("lines");
     setShowTimestamps(true);
@@ -39,9 +37,7 @@ export default function TranscriptPage() {
         {/* Error state */}
         {transcript.status === "error" && transcript.error && (
           <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red/30 bg-red/5 p-4">
-            <span className="mt-0.5 flex-shrink-0 text-lg">
-              {"\u26a0\ufe0f"}
-            </span>
+            <span className="mt-0.5 flex-shrink-0 text-lg">{"\u26a0\ufe0f"}</span>
             <div>
               <strong className="block text-sm font-bold text-red">
                 Could not fetch transcript
@@ -59,7 +55,7 @@ export default function TranscriptPage() {
               Extracting Transcript...
             </h3>
             <p className="text-sm text-muted">
-              Fetching captions from YouTube
+              Fetching captions from YouTube (server-side)
             </p>
           </div>
         )}
@@ -89,7 +85,7 @@ export default function TranscriptPage() {
               title={transcript.title}
               wordCount={transcript.wordCount}
               readTime={transcript.readTime}
-              videoUrl={videoUrl}
+              videoId={transcript.videoId}
               showTimestamps={showTimestamps}
               view={view}
               searchQuery={searchQuery}
@@ -97,7 +93,7 @@ export default function TranscriptPage() {
           </div>
         )}
 
-        {/* Empty / idle state */}
+        {/* Idle state */}
         {transcript.status === "idle" && (
           <div className="py-16 text-center">
             <span className="mb-4 block text-5xl opacity-50">

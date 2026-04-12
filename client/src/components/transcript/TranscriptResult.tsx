@@ -1,14 +1,13 @@
 import { useMemo } from "react";
 import type { TranscriptLine } from "@/types";
 import { formatTime } from "@/lib/vtt-parser";
-import { extractVideoId } from "@/lib/transcript-engine";
 
 interface TranscriptResultProps {
   lines: TranscriptLine[];
   title: string;
   wordCount: number;
   readTime: number;
-  videoUrl: string;
+  videoId: string | null;
   showTimestamps: boolean;
   view: "lines" | "full";
   searchQuery: string;
@@ -31,13 +30,11 @@ export default function TranscriptResult({
   title,
   wordCount,
   readTime,
-  videoUrl,
+  videoId,
   showTimestamps,
   view,
   searchQuery,
 }: TranscriptResultProps) {
-  const videoId = extractVideoId(videoUrl);
-
   const filteredLines = useMemo(() => {
     const term = searchQuery.trim().toLowerCase();
     if (!term) return lines;
@@ -50,11 +47,10 @@ export default function TranscriptResult({
     const re = new RegExp(escapeRegex(term), "gi");
     return escapeHtml(text).replace(
       re,
-      (m) => `<mark class="rounded bg-amber/40 px-0.5">${m}</mark>`
+      (m) => `<mark class="rounded bg-amber/40 px-0.5">${m}</mark>`,
     );
   }
 
-  // Full text: chunk into paragraphs of 20 lines
   const fullTextParagraphs = useMemo(() => {
     const chunks: string[] = [];
     for (let i = 0; i < filteredLines.length; i += 20) {
@@ -62,7 +58,7 @@ export default function TranscriptResult({
         filteredLines
           .slice(i, i + 20)
           .map((l) => l.text)
-          .join(" ")
+          .join(" "),
       );
     }
     return chunks;
@@ -73,29 +69,29 @@ export default function TranscriptResult({
       {/* Video meta card */}
       <div className="flex items-center gap-5 rounded-2xl border border-indigo/6 bg-white p-5 shadow-lg max-sm:flex-col">
         <div className="flex-shrink-0">
-          <img
-            src={
-              videoId
-                ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
-                : ""
-            }
-            alt="Thumbnail"
-            className="w-40 rounded-xl object-cover max-sm:w-full"
-            style={{ aspectRatio: "16/9" }}
-          />
+          {videoId && (
+            <img
+              src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+              alt="Thumbnail"
+              className="w-40 rounded-xl object-cover max-sm:w-full"
+              style={{ aspectRatio: "16/9" }}
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="mb-1 font-space text-lg font-bold leading-snug text-ink">
             {title}
           </h2>
-          <a
-            href={`https://www.youtube.com/watch?v=${videoId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm font-semibold text-indigo hover:underline"
-          >
-            {"\ud83d\udd17"} Watch on YouTube
-          </a>
+          {videoId && (
+            <a
+              href={`https://www.youtube.com/watch?v=${videoId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-indigo hover:underline"
+            >
+              {"\ud83d\udd17"} Watch on YouTube
+            </a>
+          )}
           <div className="mt-3 flex flex-wrap gap-4">
             <div className="flex items-center gap-1.5 text-sm font-medium text-body">
               <span className="h-2 w-2 rounded-full bg-indigo" />
@@ -106,8 +102,8 @@ export default function TranscriptResult({
               {wordCount.toLocaleString()} words
             </div>
             <div className="flex items-center gap-1.5 text-sm font-medium text-body">
-              <span className="h-2 w-2 rounded-full bg-green" />~{readTime}{" "}
-              min read
+              <span className="h-2 w-2 rounded-full bg-green" />~{readTime} min
+              read
             </div>
           </div>
         </div>
@@ -141,10 +137,9 @@ export default function TranscriptResult({
                     }}
                   />
                 </div>
-                {(i + 1) % 10 === 0 &&
-                  i < filteredLines.length - 1 && (
-                    <div className="mx-4 my-1 h-px bg-indigo/5" />
-                  )}
+                {(i + 1) % 10 === 0 && i < filteredLines.length - 1 && (
+                  <div className="mx-4 my-1 h-px bg-indigo/5" />
+                )}
               </div>
             ))}
           </div>
