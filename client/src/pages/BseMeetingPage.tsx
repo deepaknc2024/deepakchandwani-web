@@ -1,6 +1,4 @@
 import { useSlideshow } from "@/hooks/useSlideshow";
-import { useLanguage } from "@/contexts/LanguageContext";
-import { AuthGate } from "@/components/auth/AuthGate";
 import { SlideContainer } from "@/components/bse/SlideContainer";
 import { TopBar } from "@/components/bse/TopBar";
 import { SideArrows } from "@/components/bse/SideArrows";
@@ -21,15 +19,8 @@ import { ClosingSlide } from "@/components/bse/slides/ClosingSlide";
 
 const TOTAL_SLIDES = 12;
 
-interface BseMeetingPageProps {
-  slug?: string;
-}
-
-export default function BseMeetingPage({
-  slug = "bse-meeting",
-}: BseMeetingPageProps) {
+export default function BseMeetingPage() {
   const slideshow = useSlideshow(TOTAL_SLIDES);
-  const { t } = useLanguage();
 
   const slideComponents = [
     <TitleSlide key={0} />,
@@ -47,40 +38,38 @@ export default function BseMeetingPage({
   ];
 
   return (
-    <AuthGate slug={slug} title={t.bse.authTitle}>
-      <div
-        className="h-screen w-screen overflow-hidden font-dm"
-        style={{ background: "#334155" }}
-      >
-        <SlideContainer current={slideshow.current}>
-          {slideComponents}
-        </SlideContainer>
+    <div
+      className="h-screen w-screen overflow-hidden font-dm"
+      style={{ background: "#334155" }}
+    >
+      <SlideContainer current={slideshow.current}>
+        {slideComponents}
+      </SlideContainer>
 
-        <TopBar
-          current={slideshow.current}
-          total={slideshow.total}
-          isAutoplaying={slideshow.isAutoplaying}
-          goTo={slideshow.goTo}
-          startAutoplay={slideshow.startAutoplay}
-          stopAutoplay={slideshow.stopAutoplay}
-          restart={slideshow.restart}
-        />
+      <TopBar
+        current={slideshow.current}
+        total={slideshow.total}
+        isAutoplaying={slideshow.isAutoplaying}
+        goTo={slideshow.goTo}
+        startAutoplay={slideshow.startAutoplay}
+        stopAutoplay={slideshow.stopAutoplay}
+        restart={slideshow.restart}
+      />
 
-        <SideArrows
-          current={slideshow.current}
-          total={slideshow.total}
-          onPrev={() => {
-            slideshow.stopAutoplay();
-            slideshow.prev();
-          }}
-          onNext={() => {
-            slideshow.stopAutoplay();
-            slideshow.next();
-          }}
-        />
+      <SideArrows
+        current={slideshow.current}
+        total={slideshow.total}
+        onPrev={() => {
+          slideshow.stopAutoplay();
+          slideshow.prev();
+        }}
+        onNext={() => {
+          slideshow.stopAutoplay();
+          slideshow.next();
+        }}
+      />
 
-        <VoiceChatbot />
-      </div>
-    </AuthGate>
+      <VoiceChatbot />
+    </div>
   );
 }

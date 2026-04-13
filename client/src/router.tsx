@@ -3,6 +3,7 @@ import Layout from "@/components/layout/Layout";
 import LandingPage from "@/pages/LandingPage";
 import TranscriptPage from "@/pages/TranscriptPage";
 import BseMeetingPage from "@/pages/BseMeetingPage";
+import AdminPage from "@/pages/AdminPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import LoginPage from "@/pages/LoginPage";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -39,9 +40,13 @@ export const router = createBrowserRouter([
         path: "/bse-design",
         element: (
           <ProtectedRoute>
-            <BseMeetingPage slug="bse-design" />
+            <BseMeetingPage />
           </ProtectedRoute>
         ),
+      },
+      {
+        path: "/admin",
+        element: <AdminPage />,
       },
       {
         path: "*",
