@@ -8,6 +8,18 @@ import NotFoundPage from "@/pages/NotFoundPage";
 import LoginPage from "@/pages/LoginPage";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
+// Compliance pages
+import ComplianceLayout from "@/pages/compliance/ComplianceLayout";
+import ComplianceIndex from "@/pages/compliance/ComplianceIndex";
+import DpdpActPage from "@/pages/compliance/DpdpActPage";
+import VaptPage from "@/pages/compliance/VaptPage";
+import CertInPage from "@/pages/compliance/CertInPage";
+import ItActPage from "@/pages/compliance/ItActPage";
+import DigitalRecordsPage from "@/pages/compliance/DigitalRecordsPage";
+import SafeHostingPage from "@/pages/compliance/SafeHostingPage";
+import StandardsPage from "@/pages/compliance/StandardsPage";
+import FirmsPage from "@/pages/compliance/FirmsPage";
+
 export const router = createBrowserRouter([
   {
     element: <Layout />,
@@ -51,6 +63,25 @@ export const router = createBrowserRouter([
             <AdminPage />
           </ProtectedRoute>
         ),
+      },
+      {
+        path: "/compliance",
+        element: (
+          <ProtectedRoute>
+            <ComplianceLayout />
+          </ProtectedRoute>
+        ),
+        children: [
+          { index: true, element: <ComplianceIndex /> },
+          { path: "dpdp-act", element: <DpdpActPage /> },
+          { path: "vapt", element: <VaptPage /> },
+          { path: "cert-in", element: <CertInPage /> },
+          { path: "it-act", element: <ItActPage /> },
+          { path: "digital-records", element: <DigitalRecordsPage /> },
+          { path: "safe-hosting", element: <SafeHostingPage /> },
+          { path: "standards", element: <StandardsPage /> },
+          { path: "firms", element: <FirmsPage /> },
+        ],
       },
       {
         path: "*",

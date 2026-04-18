@@ -125,6 +125,20 @@ export default function Navbar() {
               >
                 {t.nav.bseMeeting}
               </Link>
+              <Link
+                to="/compliance"
+                className="block py-2 px-5 whitespace-nowrap text-[0.82rem] text-muted font-medium no-underline hover:bg-light-2 hover:text-cyan-2 transition-colors"
+                onClick={closeMenu}
+              >
+                Compliance
+              </Link>
+              <Link
+                to="/admin"
+                className="block py-2 px-5 whitespace-nowrap text-[0.82rem] text-muted font-medium no-underline hover:bg-light-2 hover:text-cyan-2 transition-colors"
+                onClick={closeMenu}
+              >
+                Admin
+              </Link>
             </div>
           </div>
 
