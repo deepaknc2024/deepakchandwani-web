@@ -230,6 +230,20 @@ export default function MeetingNotesNewPage() {
   };
 
   // ── Inline camera ────────────────────────────────────────────────
+  // Attach stream to video element once it's mounted
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = cameraStreamRef.current;
+    if (cameraOn && video && stream && video.srcObject !== stream) {
+      video.srcObject = stream;
+      video.onloadedmetadata = () => setCameraReady(true);
+      video.play().catch(() => { /* autoplay may need a user gesture; user can tap again */ });
+      // Fallback: if metadata event never fires (some mobile browsers), mark ready after 1.5s
+      const fallback = setTimeout(() => setCameraReady(true), 1500);
+      return () => clearTimeout(fallback);
+    }
+  }, [cameraOn]);
+
   const openCamera = useCallback(async () => {
     setCameraError(null);
     setCameraReady(false);
@@ -245,11 +259,7 @@ export default function MeetingNotesNewPage() {
         audio: false,
       });
       cameraStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => setCameraReady(true);
-        videoRef.current.play().catch(() => { /* autoplay might need gesture */ });
-      }
+      // Set cameraOn first so the <video> element renders — we attach the stream in a useEffect
       setCameraOn(true);
     } catch (err) {
       const msg = (err as Error).name === 'NotAllowedError'
