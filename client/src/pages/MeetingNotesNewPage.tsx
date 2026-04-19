@@ -170,15 +170,16 @@ export default function MeetingNotesNewPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
       audioMimeRef.current = pickAudioMimeType() || 'audio/webm';
-      allCycleBlobsRef.current = [];
+      // NOTE: do NOT reset allCycleBlobsRef or transcript — resuming should append
 
       recordingActiveRef.current = true;
       setRecording(true);
 
+      // Accumulate duration across resume cycles
+      const accumulated = duration;
       startTimeRef.current = Date.now();
-      setDuration(0);
       durationTimerRef.current = setInterval(() => {
-        setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        setDuration(accumulated + Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 1000);
 
       startCycle();
@@ -188,7 +189,7 @@ export default function MeetingNotesNewPage() {
       recordingActiveRef.current = false;
       setRecording(false);
     }
-  }, [startCycle]);
+  }, [startCycle, duration]);
 
   const stopRecording = useCallback(async () => {
     recordingActiveRef.current = false;
