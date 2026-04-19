@@ -47,18 +47,48 @@ function stripMarkdown(s: string): string {
     .trim();
 }
 
-function PlayButton({ text, getToken }: { text: string; getToken: () => Record<string, string> }) {
+interface CostInfo {
+  translationUsd: number;
+  ttsUsd: number;
+  totalUsd: number;
+  translationModel: string | null;
+  ttsProvider: string;
+  inputTokens: number;
+  outputTokens: number;
+  ttsChars: number;
+}
+
+const USD_TO_INR = 84;
+
+function fmtUsd(n: number): string {
+  if (n === 0) return '$0';
+  if (n < 0.0001) return `<$0.0001`;
+  if (n < 0.01) return `$${n.toFixed(5)}`;
+  if (n < 1) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(3)}`;
+}
+function fmtInr(n: number): string {
+  const inr = n * USD_TO_INR;
+  if (inr === 0) return '\u20B90';
+  if (inr < 0.01) return `<\u20B90.01`;
+  if (inr < 1) return `\u20B9${inr.toFixed(3)}`;
+  return `\u20B9${inr.toFixed(2)}`;
+}
+
+function PlayButton({ text, getToken, onCost }: { text: string; getToken: () => Record<string, string>; onCost?: (c: CostInfo) => void }) {
   const [lang, setLang] = useState('en');
   const [loading, setLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [translatedText, setTranslatedText] = useState<string | null>(null);
+  const [cost, setCost] = useState<CostInfo | null>(null);
 
   const play = async () => {
     setErr(null);
     setLoading(true);
     setTranslatedText(null);
+    setCost(null);
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
       setAudioUrl(null);
@@ -84,6 +114,10 @@ function PlayButton({ text, getToken }: { text: string; getToken: () => Record<s
       setAudioUrl(URL.createObjectURL(blob));
       setProvider(data.provider || null);
       if (data.translatedText) setTranslatedText(data.translatedText);
+      if (data.cost) {
+        setCost(data.cost);
+        onCost?.(data.cost);
+      }
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -125,6 +159,26 @@ function PlayButton({ text, getToken }: { text: string; getToken: () => Record<s
         {provider && <span className="text-[10px] text-muted/70">{provider}</span>}
       </div>
       {audioUrl && <audio controls autoPlay src={audioUrl} className="w-full mt-2" />}
+      {cost && (
+        <div className="mt-2 flex items-center gap-2 flex-wrap text-[10px] text-muted">
+          <span className="rounded-full bg-light-2 border border-bdl px-2 py-0.5 font-mono">
+            Cost: <span className="text-ink font-semibold">{fmtUsd(cost.totalUsd)}</span>
+            <span className="mx-1 text-muted/50">&bull;</span>
+            <span className="text-ink font-semibold">{fmtInr(cost.totalUsd)}</span>
+          </span>
+          {cost.translationUsd > 0 && (
+            <span title={`${cost.inputTokens} in + ${cost.outputTokens} out tokens via ${cost.translationModel}`}>
+              Translate {fmtUsd(cost.translationUsd)}
+            </span>
+          )}
+          {cost.ttsUsd > 0 && (
+            <span title={`${cost.ttsChars} chars via ${cost.ttsProvider}`}>
+              TTS {fmtUsd(cost.ttsUsd)}
+            </span>
+          )}
+          {cost.ttsUsd === 0 && <span>TTS free</span>}
+        </div>
+      )}
       {translatedText && (
         <details className="mt-2">
           <summary className="text-[11px] text-cyan-2 cursor-pointer select-none">Show translation</summary>
@@ -203,6 +257,14 @@ export default function MeetingNotesDetailPage() {
   const [promptRunning, setPromptRunning] = useState(false);
   const [promptModel, setPromptModel] = useState<string | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
+
+  // Running total across all Play actions on this page
+  const [playCountTotal, setPlayCountTotal] = useState(0);
+  const [costTotalUsd, setCostTotalUsd] = useState(0);
+  const handlePlayCost = (c: CostInfo) => {
+    setPlayCountTotal((n) => n + 1);
+    setCostTotalUsd((v) => v + c.totalUsd);
+  };
 
   useEffect(() => {
     if (!noteId) return;
@@ -475,7 +537,18 @@ export default function MeetingNotesDetailPage() {
 
         {/* Prompt section */}
         <div className="rounded-2xl border border-cyan-2/30 bg-gradient-to-br from-white to-cyan-2/5 p-5 shadow-sm mb-6">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-cyan-2 mb-3">Ask AI</p>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-cyan-2">Ask AI</p>
+            {playCountTotal > 0 && (
+              <div className="inline-flex items-center gap-2 text-[10px] rounded-full bg-white border border-cyan-2/30 px-3 py-1">
+                <span className="text-muted font-semibold uppercase tracking-widest">Session total</span>
+                <span className="font-mono text-ink font-semibold">{fmtUsd(costTotalUsd)}</span>
+                <span className="text-muted/50">&bull;</span>
+                <span className="font-mono text-ink font-semibold">{fmtInr(costTotalUsd)}</span>
+                <span className="text-muted/70">({playCountTotal} play{playCountTotal > 1 ? 's' : ''})</span>
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-wrap gap-1.5 mb-3">
             {SUGGESTIONS.map((s) => (
@@ -523,7 +596,7 @@ export default function MeetingNotesDetailPage() {
                 {promptRunning && <span className="inline-block w-1.5 h-4 bg-cyan-2 align-middle ml-0.5 animate-pulse" />}
               </p>
               {!promptRunning && promptOutput.trim() && (
-                <PlayButton text={promptOutput} getToken={api.authHeader} />
+                <PlayButton text={promptOutput} getToken={api.authHeader} onCost={handlePlayCost} />
               )}
               <div ref={outputRef} />
             </div>
@@ -559,7 +632,7 @@ export default function MeetingNotesDetailPage() {
                   <p className="mt-1 text-sm text-body whitespace-pre-wrap leading-relaxed">
                     {p.response}
                   </p>
-                  <PlayButton text={p.response} getToken={api.authHeader} />
+                  <PlayButton text={p.response} getToken={api.authHeader} onCost={handlePlayCost} />
                 </details>
               ))}
             </div>

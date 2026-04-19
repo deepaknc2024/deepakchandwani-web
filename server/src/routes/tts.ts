@@ -39,8 +39,24 @@ const LANG_FULL_NAME: Record<string, string> = {
   ur: 'Urdu', od: 'Odia',
 };
 
-async function translateText(text: string, targetLang: string): Promise<string> {
-  if (targetLang === 'en' || !config.openrouterApiKey) return text;
+interface TranslateResult {
+  text: string;
+  translated: boolean;
+  translationCostUsd: number;
+  translationModel: string | null;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+// Approximate per-token pricing (OpenRouter as of 2026)
+const MODEL_PRICING: Record<string, { in: number; out: number }> = {
+  'google/gemini-2.0-flash-001': { in: 0.10 / 1_000_000, out: 0.40 / 1_000_000 },
+  'openai/gpt-oss-120b:free': { in: 0, out: 0 },
+};
+
+async function translateText(text: string, targetLang: string): Promise<TranslateResult> {
+  const base: TranslateResult = { text, translated: false, translationCostUsd: 0, translationModel: null, inputTokens: 0, outputTokens: 0 };
+  if (targetLang === 'en' || !config.openrouterApiKey) return base;
   const targetName = LANG_FULL_NAME[targetLang] || targetLang;
 
   const MODELS = [
@@ -76,14 +92,30 @@ async function translateText(text: string, targetLang: string): Promise<string> 
         console.log(`[tts-translate] ${model} failed ${resp.status}`);
         continue;
       }
-      const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const data = (await resp.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
       const out = data.choices?.[0]?.message?.content?.trim();
-      if (out) return out;
+      if (out) {
+        const price = MODEL_PRICING[model] || { in: 0, out: 0 };
+        const inTok = data.usage?.prompt_tokens || Math.ceil(text.length / 4);
+        const outTok = data.usage?.completion_tokens || Math.ceil(out.length / 4);
+        const cost = inTok * price.in + outTok * price.out;
+        return {
+          text: out,
+          translated: true,
+          translationCostUsd: cost,
+          translationModel: model,
+          inputTokens: inTok,
+          outputTokens: outTok,
+        };
+      }
     } catch (err) {
       console.log(`[tts-translate] ${model} error: ${(err as Error).message}`);
     }
   }
-  return text;
+  return base;
 }
 
 router.post('/tts', async (req, res) => {
@@ -98,18 +130,29 @@ router.post('/tts', async (req, res) => {
   // Translate first if requested and target is non-English
   let speakText = text;
   let translated = false;
+  let translationCostUsd = 0;
+  let translationModel: string | null = null;
+  let inputTokens = 0;
+  let outputTokens = 0;
   if (translate && lang !== 'en') {
     try {
-      const out = await translateText(text, lang);
-      if (out && out !== text) {
-        speakText = out;
+      const tr = await translateText(text, lang);
+      if (tr.translated) {
+        speakText = tr.text;
         translated = true;
-        console.log(`[tts] translated ${text.length} -> ${out.length} chars into ${lang}`);
+        translationCostUsd = tr.translationCostUsd;
+        translationModel = tr.translationModel;
+        inputTokens = tr.inputTokens;
+        outputTokens = tr.outputTokens;
+        console.log(`[tts] translated ${text.length} -> ${tr.text.length} chars into ${lang} via ${translationModel}, cost=$${translationCostUsd.toFixed(6)}`);
       }
     } catch (err) {
       console.log(`[tts] translate failed, speaking original: ${(err as Error).message}`);
     }
   }
+
+  // TTS cost estimate: Edge TTS is free. Sarvam ~ $3 per 1M characters.
+  const SARVAM_COST_PER_CHAR = 3 / 1_000_000;
 
   // Method 1: Edge TTS (free, primary)
   try {
@@ -141,6 +184,16 @@ router.post('/tts', async (req, res) => {
         language: voice,
         translated,
         translatedText: translated ? speakText : undefined,
+        cost: {
+          translationUsd: translationCostUsd,
+          ttsUsd: 0,
+          totalUsd: translationCostUsd,
+          translationModel,
+          ttsProvider: 'edge-tts-free',
+          inputTokens,
+          outputTokens,
+          ttsChars: speakText.length,
+        },
       });
     }
     throw new Error('Empty audio buffer');
@@ -163,8 +216,9 @@ router.post('/tts', async (req, res) => {
         body: JSON.stringify({
           inputs: [truncated],
           target_language_code: targetLang,
-          speaker: 'meera',
+          speaker: 'anushka',
           model: 'bulbul:v2',
+          // Note: speaker 'meera' was deprecated; 'anushka' is Sarvam's current female speaker
           pitch: 0,
           pace: 1.1,
           loudness: 1.5,
@@ -176,6 +230,7 @@ router.post('/tts', async (req, res) => {
       if (response.ok) {
         const data = await response.json() as { audios?: string[] };
         if (data.audios?.[0]) {
+          const ttsUsd = speakText.length * SARVAM_COST_PER_CHAR;
           return res.json({
             ok: true,
             audio: data.audios[0],
@@ -184,6 +239,16 @@ router.post('/tts', async (req, res) => {
             language: targetLang,
             translated,
             translatedText: translated ? speakText : undefined,
+            cost: {
+              translationUsd: translationCostUsd,
+              ttsUsd,
+              totalUsd: translationCostUsd + ttsUsd,
+              translationModel,
+              ttsProvider: 'sarvam-bulbul-v2',
+              inputTokens,
+              outputTokens,
+              ttsChars: speakText.length,
+            },
           });
         }
       } else {
