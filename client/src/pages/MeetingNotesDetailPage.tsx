@@ -10,6 +10,104 @@ const SUGGESTIONS = [
   'Extract key numbers and dates',
 ];
 
+const TTS_LANGS: Array<{ code: string; label: string }> = [
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'Hindi' },
+  { code: 'pa', label: 'Punjabi' },
+  { code: 'ta', label: 'Tamil' },
+  { code: 'te', label: 'Telugu' },
+  { code: 'kn', label: 'Kannada' },
+  { code: 'ml', label: 'Malayalam' },
+  { code: 'mr', label: 'Marathi' },
+  { code: 'gu', label: 'Gujarati' },
+  { code: 'bn', label: 'Bengali' },
+];
+
+// Strip markdown so TTS reads naturally
+function stripMarkdown(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/#+\s*/g, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function PlayButton({ text, getToken }: { text: string; getToken: () => Record<string, string> }) {
+  const [lang, setLang] = useState('en');
+  const [loading, setLoading] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
+
+  const play = async () => {
+    setErr(null);
+    setLoading(true);
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
+    }
+    try {
+      const clean = stripMarkdown(text);
+      const r = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getToken() },
+        body: JSON.stringify({ text: clean.slice(0, 4500), language: lang }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'TTS failed');
+      const bin = atob(data.audio);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const mime = data.format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+      const blob = new Blob([bytes], { type: mime });
+      setAudioUrl(URL.createObjectURL(blob));
+      setProvider(data.provider || null);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-bdl/50">
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="text-[10px] font-semibold uppercase tracking-widest text-muted">Listen in</label>
+        <select
+          value={lang}
+          onChange={(e) => setLang(e.target.value)}
+          disabled={loading}
+          className="rounded-lg border border-bdl bg-light-2 px-2 py-1 text-xs text-ink cursor-pointer disabled:opacity-50"
+        >
+          {TTS_LANGS.map((l) => (
+            <option key={l.code} value={l.code}>{l.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={play}
+          disabled={loading || !text.trim()}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-2 text-white px-3 py-1 text-xs font-semibold hover:bg-cyan disabled:opacity-50 cursor-pointer border-none"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          {loading ? 'Generating...' : audioUrl ? 'Regenerate' : 'Play'}
+        </button>
+        {provider && <span className="text-[10px] text-muted/70">{provider}</span>}
+      </div>
+      {audioUrl && <audio controls autoPlay src={audioUrl} className="w-full mt-2" />}
+      {err && (
+        <p className="mt-2 text-[11px] text-red bg-red/5 border border-red/20 rounded-lg px-2 py-1">{err}</p>
+      )}
+    </div>
+  );
+}
+
 function ImageTile({ imageId }: { imageId: number }) {
   const url = useBlobUrl(`/api/meeting-note-images/${imageId}`);
   const [expanded, setExpanded] = useState(false);
@@ -392,6 +490,9 @@ export default function MeetingNotesDetailPage() {
                 {promptOutput}
                 {promptRunning && <span className="inline-block w-1.5 h-4 bg-cyan-2 align-middle ml-0.5 animate-pulse" />}
               </p>
+              {!promptRunning && promptOutput.trim() && (
+                <PlayButton text={promptOutput} getToken={api.authHeader} />
+              )}
               <div ref={outputRef} />
             </div>
           )}
@@ -426,6 +527,7 @@ export default function MeetingNotesDetailPage() {
                   <p className="mt-1 text-sm text-body whitespace-pre-wrap leading-relaxed">
                     {p.response}
                   </p>
+                  <PlayButton text={p.response} getToken={api.authHeader} />
                 </details>
               ))}
             </div>
