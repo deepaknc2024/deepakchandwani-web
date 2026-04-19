@@ -18,6 +18,14 @@ const LANGS = [
 ];
 
 const CHUNK_MS = 20_000; // Sarvam sync limit is 30s; 20s leaves headroom
+const FILE_LIMIT_MB = 200;
+const TOTAL_LIMIT_MB = 450;
+
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function defaultTitle(): string {
   const d = new Date();
@@ -53,6 +61,7 @@ export default function MeetingNotesNewPage() {
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [chunksInFlight, setChunksInFlight] = useState(0);
+  const [audioBytes, setAudioBytes] = useState(0);
 
   // Camera state — INLINE (not modal)
   const [cameraOn, setCameraOn] = useState(false);
@@ -136,6 +145,7 @@ export default function MeetingNotesNewPage() {
       currentCycleChunksRef.current = [];
       if (blob.size > 0) {
         allCycleBlobsRef.current.push(blob);
+        setAudioBytes(allCycleBlobsRef.current.reduce((n, b) => n + b.size, 0));
         // Fire-and-forget transcription
         transcribeChunk(blob);
       }
@@ -333,6 +343,12 @@ export default function MeetingNotesNewPage() {
     });
   };
 
+  const imagesBytes = images.reduce((n, i) => n + i.blob.size, 0);
+  const totalBytes = audioBytes + imagesBytes;
+  const totalLimitBytes = TOTAL_LIMIT_MB * 1024 * 1024;
+  const pct = Math.min(100, Math.round((totalBytes / totalLimitBytes) * 100));
+  const overLimit = totalBytes > totalLimitBytes || audioBytes > FILE_LIMIT_MB * 1024 * 1024;
+
   // ── Save ─────────────────────────────────────────────────────────
   const save = async () => {
     if (recording) await stopRecording();
@@ -385,7 +401,40 @@ export default function MeetingNotesNewPage() {
         </div>
 
         <h1 className="font-space text-2xl md:text-3xl font-extrabold text-ink mb-1">Meeting Notes</h1>
-        <p className="text-sm text-muted mb-6">Record, transcribe with Sarvam AI, capture photos, save.</p>
+        <p className="text-sm text-muted mb-4">Record, transcribe with Sarvam AI, capture photos, save.</p>
+
+        {/* Size usage */}
+        <div className="rounded-xl border border-bdl bg-white px-4 py-3 mb-4 shadow-sm">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Upload size</p>
+            <p className={`text-xs font-mono font-semibold ${overLimit ? 'text-red' : 'text-ink'}`}>
+              {formatBytes(totalBytes)} <span className="text-muted">/ {TOTAL_LIMIT_MB} MB</span>
+            </p>
+          </div>
+          <div className="h-1.5 rounded-full bg-light-2 overflow-hidden mb-2">
+            <div
+              className={`h-full rounded-full transition-all ${
+                pct > 90 ? 'bg-red' : pct > 70 ? 'bg-orange' : 'bg-cyan-2'
+              }`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-muted">
+            <span>
+              <span className="text-cyan-2 font-semibold">&#9679;</span> Audio {formatBytes(audioBytes)}
+              <span className="text-muted/60"> (max {FILE_LIMIT_MB} MB)</span>
+            </span>
+            <span>
+              <span className="text-indigo font-semibold">&#9679;</span> Images {formatBytes(imagesBytes)}
+              <span className="text-muted/60"> ({images.length})</span>
+            </span>
+          </div>
+          {overLimit && (
+            <p className="mt-2 text-[11px] text-red">
+              Over limit — remove some images or split this into two meetings.
+            </p>
+          )}
+        </div>
 
         <input
           type="text"
@@ -630,7 +679,7 @@ export default function MeetingNotesNewPage() {
           </Link>
           <button
             onClick={save}
-            disabled={saving || recording || chunksInFlight > 0}
+            disabled={saving || recording || chunksInFlight > 0 || overLimit}
             className="flex-1 rounded-xl bg-cyan-2 text-white py-3 font-bold hover:bg-cyan transition-all disabled:opacity-50 cursor-pointer border-none shadow-sm"
           >
             {saving ? 'Saving...' : chunksInFlight > 0 ? 'Transcribing...' : 'Save Meeting'}

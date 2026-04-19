@@ -24,9 +24,11 @@ function randName(ext: string) {
 }
 
 // Use memory storage — we need the note id first to place files in the right folder
+export const MN_FILE_SIZE_LIMIT = 200 * 1024 * 1024; // 200 MB per file
+export const MN_TOTAL_SIZE_LIMIT = 450 * 1024 * 1024; // 450 MB total per request (Nginx caps at 500M)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB per file
+  limits: { fileSize: MN_FILE_SIZE_LIMIT },
 });
 
 async function ownsNote(noteId: number, userId: number): Promise<boolean> {

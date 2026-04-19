@@ -82,6 +82,13 @@ export function useMeetingNotesApi() {
         headers: authHeader(),
         body: fd,
       });
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        if (r.status === 413) {
+          throw new Error(`Upload too large (${r.status}). Remove some images or split this meeting.`);
+        }
+        throw new Error(`Server returned a non-JSON response (${r.status}). The upload may be too large or the server is down.`);
+      }
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Failed');
       return { id: data.note.id };
