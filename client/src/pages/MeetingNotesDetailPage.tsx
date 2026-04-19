@@ -10,17 +10,27 @@ const SUGGESTIONS = [
   'Extract key numbers and dates',
 ];
 
-const TTS_LANGS: Array<{ code: string; label: string }> = [
-  { code: 'en', label: 'English' },
-  { code: 'hi', label: 'Hindi' },
-  { code: 'pa', label: 'Punjabi' },
-  { code: 'ta', label: 'Tamil' },
-  { code: 'te', label: 'Telugu' },
-  { code: 'kn', label: 'Kannada' },
-  { code: 'ml', label: 'Malayalam' },
-  { code: 'mr', label: 'Marathi' },
-  { code: 'gu', label: 'Gujarati' },
-  { code: 'bn', label: 'Bengali' },
+const TTS_LANGS: Array<{ code: string; label: string; group: string }> = [
+  { code: 'en', label: 'English', group: 'International' },
+  { code: 'hi', label: 'Hindi', group: 'Indian' },
+  { code: 'pa', label: 'Punjabi', group: 'Indian' },
+  { code: 'ta', label: 'Tamil', group: 'Indian' },
+  { code: 'te', label: 'Telugu', group: 'Indian' },
+  { code: 'kn', label: 'Kannada', group: 'Indian' },
+  { code: 'ml', label: 'Malayalam', group: 'Indian' },
+  { code: 'mr', label: 'Marathi', group: 'Indian' },
+  { code: 'gu', label: 'Gujarati', group: 'Indian' },
+  { code: 'bn', label: 'Bengali', group: 'Indian' },
+  { code: 'es', label: 'Spanish', group: 'International' },
+  { code: 'fr', label: 'French', group: 'International' },
+  { code: 'de', label: 'German', group: 'International' },
+  { code: 'it', label: 'Italian', group: 'International' },
+  { code: 'pt', label: 'Portuguese', group: 'International' },
+  { code: 'ja', label: 'Japanese', group: 'International' },
+  { code: 'zh', label: 'Chinese (Mandarin)', group: 'International' },
+  { code: 'ko', label: 'Korean', group: 'International' },
+  { code: 'ar', label: 'Arabic', group: 'International' },
+  { code: 'ru', label: 'Russian', group: 'International' },
 ];
 
 // Strip markdown so TTS reads naturally
@@ -43,10 +53,12 @@ function PlayButton({ text, getToken }: { text: string; getToken: () => Record<s
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
+  const [translatedText, setTranslatedText] = useState<string | null>(null);
 
   const play = async () => {
     setErr(null);
     setLoading(true);
+    setTranslatedText(null);
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
       setAudioUrl(null);
@@ -56,7 +68,11 @@ function PlayButton({ text, getToken }: { text: string; getToken: () => Record<s
       const r = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getToken() },
-        body: JSON.stringify({ text: clean.slice(0, 4500), language: lang }),
+        body: JSON.stringify({
+          text: clean.slice(0, 4500),
+          language: lang,
+          translate: lang !== 'en',
+        }),
       });
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'TTS failed');
@@ -67,6 +83,7 @@ function PlayButton({ text, getToken }: { text: string; getToken: () => Record<s
       const blob = new Blob([bytes], { type: mime });
       setAudioUrl(URL.createObjectURL(blob));
       setProvider(data.provider || null);
+      if (data.translatedText) setTranslatedText(data.translatedText);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -84,9 +101,16 @@ function PlayButton({ text, getToken }: { text: string; getToken: () => Record<s
           disabled={loading}
           className="rounded-lg border border-bdl bg-light-2 px-2 py-1 text-xs text-ink cursor-pointer disabled:opacity-50"
         >
-          {TTS_LANGS.map((l) => (
-            <option key={l.code} value={l.code}>{l.label}</option>
-          ))}
+          <optgroup label="Indian">
+            {TTS_LANGS.filter((l) => l.group === 'Indian').map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="International">
+            {TTS_LANGS.filter((l) => l.group === 'International').map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </optgroup>
         </select>
         <button
           onClick={play}
@@ -101,6 +125,14 @@ function PlayButton({ text, getToken }: { text: string; getToken: () => Record<s
         {provider && <span className="text-[10px] text-muted/70">{provider}</span>}
       </div>
       {audioUrl && <audio controls autoPlay src={audioUrl} className="w-full mt-2" />}
+      {translatedText && (
+        <details className="mt-2">
+          <summary className="text-[11px] text-cyan-2 cursor-pointer select-none">Show translation</summary>
+          <p className="mt-1.5 text-xs text-body whitespace-pre-wrap bg-light-2 rounded-lg px-3 py-2 border border-bdl">
+            {translatedText}
+          </p>
+        </details>
+      )}
       {err && (
         <p className="mt-2 text-[11px] text-red bg-red/5 border border-red/20 rounded-lg px-2 py-1">{err}</p>
       )}

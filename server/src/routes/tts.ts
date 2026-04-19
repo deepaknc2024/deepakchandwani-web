@@ -31,8 +31,63 @@ const SARVAM_LANGS: Record<string, string> = {
   mr: 'mr-IN', gu: 'gu-IN',
 };
 
+const LANG_FULL_NAME: Record<string, string> = {
+  en: 'English', hi: 'Hindi', pa: 'Punjabi', ta: 'Tamil', te: 'Telugu',
+  kn: 'Kannada', ml: 'Malayalam', bn: 'Bengali', mr: 'Marathi', gu: 'Gujarati',
+  es: 'Spanish', fr: 'French', de: 'German', ja: 'Japanese', zh: 'Chinese (Mandarin)',
+  ar: 'Arabic', pt: 'Portuguese', it: 'Italian', ru: 'Russian', ko: 'Korean',
+  ur: 'Urdu', od: 'Odia',
+};
+
+async function translateText(text: string, targetLang: string): Promise<string> {
+  if (targetLang === 'en' || !config.openrouterApiKey) return text;
+  const targetName = LANG_FULL_NAME[targetLang] || targetLang;
+
+  const MODELS = [
+    'google/gemini-2.0-flash-001',
+    'openai/gpt-oss-120b:free',
+  ];
+
+  for (const model of MODELS) {
+    try {
+      const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.openrouterApiKey}`,
+          'HTTP-Referer': 'https://web.deepakchandwani.com',
+          'X-Title': 'DC - Translation for TTS',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: `You are a translator. Translate the user's text into natural ${targetName}. Output ONLY the translation, no preamble, no quotes, no notes. Preserve paragraph breaks.`,
+            },
+            { role: 'user', content: text.slice(0, 4500) },
+          ],
+          max_tokens: 3000,
+          temperature: 0.2,
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!resp.ok) {
+        console.log(`[tts-translate] ${model} failed ${resp.status}`);
+        continue;
+      }
+      const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const out = data.choices?.[0]?.message?.content?.trim();
+      if (out) return out;
+    } catch (err) {
+      console.log(`[tts-translate] ${model} error: ${(err as Error).message}`);
+    }
+  }
+  return text;
+}
+
 router.post('/tts', async (req, res) => {
-  const { text, language } = req.body as { text?: string; language?: string };
+  const { text, language, translate } = req.body as { text?: string; language?: string; translate?: boolean };
 
   if (!text || text.length < 2) {
     return res.status(400).json({ ok: false, error: 'Text is required' });
@@ -40,15 +95,31 @@ router.post('/tts', async (req, res) => {
 
   const lang = language || 'en';
 
+  // Translate first if requested and target is non-English
+  let speakText = text;
+  let translated = false;
+  if (translate && lang !== 'en') {
+    try {
+      const out = await translateText(text, lang);
+      if (out && out !== text) {
+        speakText = out;
+        translated = true;
+        console.log(`[tts] translated ${text.length} -> ${out.length} chars into ${lang}`);
+      }
+    } catch (err) {
+      console.log(`[tts] translate failed, speaking original: ${(err as Error).message}`);
+    }
+  }
+
   // Method 1: Edge TTS (free, primary)
   try {
     const voice = EDGE_VOICES[lang] || EDGE_VOICES.en;
-    console.log(`[tts] Using Edge TTS: voice=${voice}, text=${text.length} chars`);
+    console.log(`[tts] Using Edge TTS: voice=${voice}, text=${speakText.length} chars, translated=${translated}`);
 
     const tts = new MsEdgeTTS();
     await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
 
-    const { audioStream } = tts.toStream(text.substring(0, 5000));
+    const { audioStream } = tts.toStream(speakText.substring(0, 5000));
     const chunks: Buffer[] = [];
 
     await new Promise<void>((resolve, reject) => {
@@ -66,8 +137,10 @@ router.post('/tts', async (req, res) => {
         ok: true,
         audio: audioBuffer.toString('base64'),
         format: 'mp3',
-        provider: 'Microsoft Edge TTS (Free)',
+        provider: translated ? `Microsoft Edge TTS + AI translation (${LANG_FULL_NAME[lang] || lang})` : 'Microsoft Edge TTS (Free)',
         language: voice,
+        translated,
+        translatedText: translated ? speakText : undefined,
       });
     }
     throw new Error('Empty audio buffer');
@@ -79,7 +152,7 @@ router.post('/tts', async (req, res) => {
   if (config.sarvamApiKey && SARVAM_LANGS[lang]) {
     try {
       const targetLang = SARVAM_LANGS[lang];
-      const truncated = text.substring(0, 3000);
+      const truncated = speakText.substring(0, 3000);
 
       const response = await fetch('https://api.sarvam.ai/text-to-speech', {
         method: 'POST',
@@ -107,8 +180,10 @@ router.post('/tts', async (req, res) => {
             ok: true,
             audio: data.audios[0],
             format: 'wav',
-            provider: 'Sarvam AI',
+            provider: translated ? `Sarvam AI + translation (${LANG_FULL_NAME[lang] || lang})` : 'Sarvam AI',
             language: targetLang,
+            translated,
+            translatedText: translated ? speakText : undefined,
           });
         }
       } else {
