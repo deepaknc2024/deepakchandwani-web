@@ -82,13 +82,21 @@ function PlayButton({ text, getToken, onCost }: { text: string; getToken: () => 
   const [err, setErr] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [translatedText, setTranslatedText] = useState<string | null>(null);
-  const [cost, setCost] = useState<CostInfo | null>(null);
+
+  interface PlayEntry {
+    langCode: string;
+    langLabel: string;
+    cost: CostInfo;
+    provider: string | null;
+    at: number;
+  }
+  const [history, setHistory] = useState<PlayEntry[]>([]);
+  const buttonCostTotal = history.reduce((n, h) => n + h.cost.totalUsd, 0);
 
   const play = async () => {
     setErr(null);
     setLoading(true);
     setTranslatedText(null);
-    setCost(null);
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
       setAudioUrl(null);
@@ -115,7 +123,8 @@ function PlayButton({ text, getToken, onCost }: { text: string; getToken: () => 
       setProvider(data.provider || null);
       if (data.translatedText) setTranslatedText(data.translatedText);
       if (data.cost) {
-        setCost(data.cost);
+        const langLabel = TTS_LANGS.find((l) => l.code === lang)?.label || lang;
+        setHistory((prev) => [...prev, { langCode: lang, langLabel, cost: data.cost, provider: data.provider || null, at: Date.now() }]);
         onCost?.(data.cost);
       }
     } catch (e) {
@@ -159,24 +168,42 @@ function PlayButton({ text, getToken, onCost }: { text: string; getToken: () => 
         {provider && <span className="text-[10px] text-muted/70">{provider}</span>}
       </div>
       {audioUrl && <audio controls autoPlay src={audioUrl} className="w-full mt-2" />}
-      {cost && (
-        <div className="mt-2 flex items-center gap-2 flex-wrap text-[10px] text-muted">
-          <span className="rounded-full bg-light-2 border border-bdl px-2 py-0.5 font-mono">
-            Cost: <span className="text-ink font-semibold">{fmtUsd(cost.totalUsd)}</span>
-            <span className="mx-1 text-muted/50">&bull;</span>
-            <span className="text-ink font-semibold">{fmtInr(cost.totalUsd)}</span>
-          </span>
-          {cost.translationUsd > 0 && (
-            <span title={`${cost.inputTokens} in + ${cost.outputTokens} out tokens via ${cost.translationModel}`}>
-              Translate {fmtUsd(cost.translationUsd)}
+      {history.length > 0 && (
+        <div className="mt-3 rounded-lg bg-light-2/60 border border-bdl px-3 py-2">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Cost per language</p>
+            <span className="text-[10px] font-mono">
+              Total: <span className="text-ink font-bold">{fmtUsd(buttonCostTotal)}</span>
+              <span className="mx-1 text-muted/50">&bull;</span>
+              <span className="text-ink font-bold">{fmtInr(buttonCostTotal)}</span>
             </span>
-          )}
-          {cost.ttsUsd > 0 && (
-            <span title={`${cost.ttsChars} chars via ${cost.ttsProvider}`}>
-              TTS {fmtUsd(cost.ttsUsd)}
-            </span>
-          )}
-          {cost.ttsUsd === 0 && <span>TTS free</span>}
+          </div>
+          <div className="flex flex-col gap-1">
+            {history.map((h, i) => (
+              <div key={i} className="flex items-center justify-between text-[11px]">
+                <span className="text-ink font-medium">
+                  {h.langLabel}
+                  {h.cost.translationUsd > 0 && (
+                    <span className="ml-2 text-muted text-[10px]" title={`${h.cost.inputTokens} + ${h.cost.outputTokens} tokens`}>
+                      translate {fmtUsd(h.cost.translationUsd)}
+                    </span>
+                  )}
+                  {h.cost.ttsUsd > 0 ? (
+                    <span className="ml-2 text-muted text-[10px]" title={`${h.cost.ttsChars} chars`}>
+                      TTS {fmtUsd(h.cost.ttsUsd)}
+                    </span>
+                  ) : (
+                    <span className="ml-2 text-muted text-[10px]">TTS free</span>
+                  )}
+                </span>
+                <span className="font-mono text-ink">
+                  {fmtUsd(h.cost.totalUsd)}
+                  <span className="mx-1 text-muted/50">&bull;</span>
+                  {fmtInr(h.cost.totalUsd)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {translatedText && (
