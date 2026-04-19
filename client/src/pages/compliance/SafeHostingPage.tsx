@@ -1,21 +1,25 @@
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Hero, Breadcrumb, InfoBox, ResourceList, Section, PageContainer } from './CompliancePage';
 
 export default function SafeHostingPage() {
+  const { t } = useLanguage();
+  const c = t.compliance;
+
   return (
     <>
-      <Hero title="Safe Hosting Guidelines" subtitle="MeitY, GIGW, and CERT-In guidelines for hosting web infrastructure in India" />
+      <Hero title={c.shTitle} subtitle={c.shSubtitle} />
       <PageContainer>
-        <Breadcrumb current="Safe Hosting" />
+        <Breadcrumb current={c.shTitle} />
 
-        <Section title="Hosting Requirements Checklist">
-          <InfoBox title="Pre-Hosting Security Audit" variant="danger">
+        <Section title={c.shChecklist}>
+          <InfoBox title={c.shPreAudit} variant="danger">
             <ul className="list-disc pl-5 space-y-1">
               <li>ALL websites, web apps, portals, and mobile apps must be audited <strong>BEFORE production</strong></li>
               <li>Clearance certificate required from: <strong>NIC, STQC, or CERT-In empanelled lab</strong></li>
             </ul>
           </InfoBox>
 
-          <InfoBox title="Infrastructure Location">
+          <InfoBox title={c.shInfra}>
             <ul className="list-disc pl-5 space-y-1">
               <li>Web infrastructure <strong>MUST be hosted within India</strong></li>
               <li>High availability configuration required</li>
@@ -25,7 +29,7 @@ export default function SafeHostingPage() {
             </ul>
           </InfoBox>
 
-          <InfoBox title="SSL/TLS Requirements">
+          <InfoBox title={c.shSsl}>
             <ul className="list-disc pl-5 space-y-1">
               <li>HTTP disabled; <strong>HTTPS enforced with HSTS</strong></li>
               <li>Minimum <strong>2048-bit SHA-256</strong> SSL certificates</li>
@@ -34,14 +38,14 @@ export default function SafeHostingPage() {
             </ul>
           </InfoBox>
 
-          <InfoBox title="Web Application Firewall (WAF)">
+          <InfoBox title={c.shWaf}>
             <ul className="list-disc pl-5 space-y-1">
               <li>WAF must be deployed, configured, and hardened</li>
               <li>Regular rule updates for emerging threats</li>
             </ul>
           </InfoBox>
 
-          <InfoBox title="Database Security">
+          <InfoBox title={c.shDb}>
             <ul className="list-disc pl-5 space-y-1">
               <li>Encryption for <strong>data at rest and in transit</strong></li>
               <li>Hashing and salting for password storage</li>
@@ -51,7 +55,7 @@ export default function SafeHostingPage() {
             </ul>
           </InfoBox>
 
-          <InfoBox title="Log Management">
+          <InfoBox title={c.shLogs}>
             <ul className="list-disc pl-5 space-y-1">
               <li>Infrastructure logs for rolling <strong>180 days</strong></li>
               <li>Tamper-proof and securely stored</li>
@@ -59,7 +63,7 @@ export default function SafeHostingPage() {
             </ul>
           </InfoBox>
 
-          <InfoBox title="Network Security">
+          <InfoBox title={c.shNetwork}>
             <ul className="list-disc pl-5 space-y-1">
               <li>Network segmentation and firewall configuration</li>
               <li>Identity and access management (IAM)</li>
@@ -69,7 +73,7 @@ export default function SafeHostingPage() {
           </InfoBox>
         </Section>
 
-        <Section title="Applicable Frameworks">
+        <Section title={c.shFrameworks}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { name: 'GIGW', desc: 'Guidelines for Indian Government Websites and Apps' },
@@ -84,7 +88,7 @@ export default function SafeHostingPage() {
           </div>
         </Section>
 
-        <Section title="Resources & References">
+        <Section title={c.shResources}>
           <ResourceList items={[
             { href: 'https://guidelines.india.gov.in/security-guidelines-and-attributes/', title: 'GIGW — Security Guidelines' },
             { href: 'https://www.cert-in.org.in/PDF/guidelinesgovtentities.pdf', title: 'CERT-In — GISPI Full Document (PDF)' },

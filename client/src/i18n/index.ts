@@ -51,9 +51,30 @@ export const languages: Record<Lang, { label: string; nativeLabel: string }> = {
   ur: { label: 'Urdu', nativeLabel: 'اردو' },
 };
 
+// Deep-merge a language over the English base so new keys in en.ts
+// automatically fall back to English for languages that haven't translated them yet.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function deepMerge(base: any, override: any): any {
+  const result = { ...base };
+  for (const key of Object.keys(override)) {
+    if (override[key] && typeof override[key] === 'object' && !Array.isArray(override[key])) {
+      result[key] = deepMerge(base[key] || {}, override[key]);
+    } else {
+      result[key] = override[key];
+    }
+  }
+  return result;
+}
+
 export const translations: Record<Lang, Translations> = {
-  en, hi, mr, ta, te, bn, kn, gu, ml, pa, od, sd, ur,
-  es, fr, de, pt, ar, ja, zh, ko,
+  en,
+  hi: deepMerge(en, hi), mr: deepMerge(en, mr), ta: deepMerge(en, ta),
+  te: deepMerge(en, te), bn: deepMerge(en, bn), kn: deepMerge(en, kn),
+  gu: deepMerge(en, gu), ml: deepMerge(en, ml), pa: deepMerge(en, pa),
+  od: deepMerge(en, od), sd: deepMerge(en, sd), ur: deepMerge(en, ur),
+  es: deepMerge(en, es), fr: deepMerge(en, fr), de: deepMerge(en, de),
+  pt: deepMerge(en, pt), ar: deepMerge(en, ar), ja: deepMerge(en, ja),
+  zh: deepMerge(en, zh), ko: deepMerge(en, ko),
 };
 
 export type { Translations };

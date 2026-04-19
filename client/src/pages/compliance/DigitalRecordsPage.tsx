@@ -1,18 +1,22 @@
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Hero, Breadcrumb, InfoBox, DataTable, Badge, ResourceList, Section, PageContainer } from './CompliancePage';
 
 export default function DigitalRecordsPage() {
+  const { t } = useLanguage();
+  const c = t.compliance;
+
   return (
     <>
-      <Hero title="Digital Records Compliance" subtitle="Bharatiya Sakshya Adhiniyam 2023, electronic evidence, and record retention" gradient="from-amber-800 via-amber-600 to-orange-500" />
+      <Hero title={c.drTitle} subtitle={c.drSubtitle} gradient="from-amber-800 via-amber-600 to-orange-500" />
       <PageContainer>
-        <Breadcrumb current="Digital Records" />
+        <Breadcrumb current={c.drTitle} />
 
-        <InfoBox title="BSA 2023 — Effective July 1, 2024" variant="highlight">
-          <p>The Bharatiya Sakshya Adhiniyam (BSA) 2023 replaced the Indian Evidence Act 1872, modernising India's framework for electronic evidence and digital records.</p>
+        <InfoBox title={c.drBsaEffective} variant="highlight">
+          <p>{c.drBsaDesc}</p>
         </InfoBox>
 
-        <Section title='Expanded Definition of "Document"'>
-          <InfoBox title="Now Explicitly Includes">
+        <Section title={c.drDocDef}>
+          <InfoBox title={c.drDocTitle}>
             <ul className="list-disc pl-5 space-y-1">
               <li>Emails and electronic communications</li>
               <li>Server logs and system logs</li>
@@ -25,8 +29,8 @@ export default function DigitalRecordsPage() {
           </InfoBox>
         </Section>
 
-        <Section title="Section 63 — Electronic Records as Evidence">
-          <InfoBox title="Key Provisions">
+        <Section title={c.drSec63}>
+          <InfoBox title={c.drSec63Title}>
             <ul className="list-disc pl-5 space-y-1">
               <li>Electronic records deemed a <strong>"document"</strong> and admissible as evidence</li>
               <li>Can serve as <strong>PRIMARY evidence</strong> — no physical copies needed</li>
@@ -35,8 +39,8 @@ export default function DigitalRecordsPage() {
           </InfoBox>
         </Section>
 
-        <Section title="Authentication Requirements">
-          <InfoBox title="Dual Certification Requirement" variant="warning">
+        <Section title={c.drAuth}>
+          <InfoBox title={c.drAuthTitle} variant="warning">
             <p className="mb-2">A certificate must be signed by:</p>
             <ul className="list-disc pl-5 space-y-1 mb-2">
               <li><strong>1. The person in charge of the device</strong> — custodian of the system</li>
@@ -51,8 +55,8 @@ export default function DigitalRecordsPage() {
           </InfoBox>
         </Section>
 
-        <Section title="Chain of Custody">
-          <InfoBox title="Critical Requirement" variant="danger">
+        <Section title={c.drChain}>
+          <InfoBox title={c.drChainTitle} variant="danger">
             <ul className="list-disc pl-5 space-y-1">
               <li>Every instance of handling, transferring, or accessing must be <strong>documented</strong></li>
               <li>Without documented chain, evidence may be deemed <strong>inadmissible</strong></li>
@@ -61,9 +65,9 @@ export default function DigitalRecordsPage() {
           </InfoBox>
         </Section>
 
-        <Section title="Record Retention Requirements">
+        <Section title={c.drRetention}>
           <DataTable
-            headers={['Regulation', 'Period', 'Records']}
+            headers={[c.drColRegulation, c.drColPeriod, c.drColRecords]}
             rows={[
               ['CERT-In Directive 2022', <Badge color="blue">180 days (rolling)</Badge>, 'All ICT system logs'],
               ['CERT-In Directive 2022', <Badge color="red">5 years</Badge>, 'VPN subscriber, cloud KYC, crypto records'],
@@ -75,7 +79,7 @@ export default function DigitalRecordsPage() {
           />
         </Section>
 
-        <Section title="Resources & References">
+        <Section title={c.drResources}>
           <ResourceList items={[
             { href: 'https://www.livelaw.in/top-stories/bharatiya-sakshya-adhiniyam-changes-electronic-evidence-admissibility-explainer-245852', title: 'LiveLaw — BSA 2023 Electronic Evidence Explainer' },
             { href: 'https://www.acmlegal.org/blog/digital-transformation-in-the-indian-legal-framework-bharatiya-sakshya-adhiniyam-2023-bsa/', title: 'ACM Legal — BSA 2023 Digital Transformation' },

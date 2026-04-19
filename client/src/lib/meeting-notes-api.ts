@@ -87,6 +87,16 @@ export function useMeetingNotesApi() {
       return { id: data.note.id };
     },
 
+    async update(id: number, patch: { title?: string; transcript?: string }): Promise<void> {
+      const r = await fetch(`/api/meeting-notes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify(patch),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Failed');
+    },
+
     async remove(id: number): Promise<void> {
       const r = await fetch(`/api/meeting-notes/${id}`, {
         method: 'DELETE',

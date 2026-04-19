@@ -1,45 +1,31 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMeetingNotesApi } from '@/lib/meeting-notes-api';
-
-interface SRResult {
-  [index: number]: { transcript: string };
-  isFinal: boolean;
-}
-interface SREvent {
-  results: { [index: number]: SRResult; length: number };
-  resultIndex: number;
-}
-interface SRInstance extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  onresult: ((ev: SREvent) => void) | null;
-  onerror: ((ev: { error: string }) => void) | null;
-  onend: (() => void) | null;
-}
-/* eslint-disable @typescript-eslint/no-explicit-any */
-const getSR = (): (new () => SRInstance) | undefined =>
-  (typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : undefined);
+import CameraCaptureModal from '@/components/meeting-notes/CameraCaptureModal';
 
 const LANGS = [
-  { code: 'en-IN', label: 'English (India)' },
-  { code: 'en-US', label: 'English (US)' },
+  { code: 'unknown', label: 'Auto-detect' },
+  { code: 'en-IN', label: 'English' },
   { code: 'hi-IN', label: 'Hindi' },
   { code: 'pa-IN', label: 'Punjabi' },
   { code: 'ta-IN', label: 'Tamil' },
   { code: 'te-IN', label: 'Telugu' },
+  { code: 'kn-IN', label: 'Kannada' },
+  { code: 'ml-IN', label: 'Malayalam' },
   { code: 'mr-IN', label: 'Marathi' },
   { code: 'gu-IN', label: 'Gujarati' },
   { code: 'bn-IN', label: 'Bengali' },
+  { code: 'od-IN', label: 'Odia' },
 ];
 
-const SARVAM_LANG_MAP: Record<string, string> = {
-  'en-IN': 'en-IN', 'en-US': 'en-IN', 'hi-IN': 'hi-IN', 'pa-IN': 'pa-IN',
-  'ta-IN': 'ta-IN', 'te-IN': 'te-IN', 'mr-IN': 'mr-IN', 'gu-IN': 'gu-IN', 'bn-IN': 'bn-IN',
-};
+const CHUNK_MS = 20_000; // Sarvam sync limit is 30s; 20s leaves headroom
+
+function defaultTitle(): string {
+  const d = new Date();
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `Meeting \u2014 ${date} ${time}`;
+}
 
 export default function MeetingNotesNewPage() {
   const api = useMeetingNotesApi();
@@ -47,40 +33,103 @@ export default function MeetingNotesNewPage() {
 
   const [title, setTitle] = useState('');
   const [transcript, setTranscript] = useState('');
-  const [interim, setInterim] = useState('');
   const [recording, setRecording] = useState(false);
-  const [lang, setLang] = useState('en-IN');
-  const [images, setImages] = useState<Array<{ blob: Blob; preview: string }>>([]);
+  const [lang, setLang] = useState('unknown');
+  const [images, setImages] = useState<Array<{ blob: Blob; preview: string; id: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [sttProvider, setSttProvider] = useState<'browser' | 'sarvam-pending' | 'sarvam'>('browser');
+  const [chunksInFlight, setChunksInFlight] = useState(0);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
-  const recognitionRef = useRef<SRInstance | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
-  const audioBlobRef = useRef<Blob | null>(null);
+  // Recorders
   const streamRef = useRef<MediaStream | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const fullRecorderRef = useRef<MediaRecorder | null>(null);
+  const fullChunksRef = useRef<BlobPart[]>([]);
+  const audioBlobRef = useRef<Blob | null>(null);
+  const fullMimeRef = useRef<string>('audio/webm');
+
+  const chunkRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunkBufferRef = useRef<BlobPart[]>([]);
+  const chunkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingRef = useRef(false);
+
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const transcriptRef = useRef<string>('');
+  const startTimeRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-
-  const hasWebSpeech = !!getSR();
-
-  useEffect(() => {
-    transcriptRef.current = transcript;
-  }, [transcript]);
 
   useEffect(() => {
     return () => {
       if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+      if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       images.forEach((i) => URL.revokeObjectURL(i.preview));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const pickMimeType = (): string => {
+    const prefs = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4;codecs=mp4a.40.2',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+    ];
+    for (const p of prefs) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(p)) return p;
+    }
+    return '';
+  };
+
+  const transcribeChunk = useCallback(
+    async (blob: Blob) => {
+      if (blob.size < 1200) return;
+      setChunksInFlight((n) => n + 1);
+      try {
+        const { transcript: text } = await api.transcribeViaServer(blob, lang);
+        if (text && text.trim()) {
+          setTranscript((prev) => (prev ? `${prev} ${text.trim()}` : text.trim()));
+        }
+      } catch (err) {
+        console.error('[transcribe chunk]', err);
+        setError(`Transcription failed: ${(err as Error).message}`);
+      } finally {
+        setChunksInFlight((n) => Math.max(0, n - 1));
+      }
+    },
+    [api, lang],
+  );
+
+  const startChunkRecorder = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream || !recordingRef.current) return;
+
+    const mimeType = pickMimeType();
+    const chunker = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    chunkBufferRef.current = [];
+
+    chunker.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunkBufferRef.current.push(e.data);
+    };
+    chunker.onstop = () => {
+      const blob = new Blob(chunkBufferRef.current, { type: mimeType || 'audio/webm' });
+      chunkBufferRef.current = [];
+      transcribeChunk(blob);
+      if (recordingRef.current) {
+        // Small gap to avoid dropping the next syllable — restart immediately
+        startChunkRecorder();
+      }
+    };
+    chunker.start();
+    chunkRecorderRef.current = chunker;
+
+    chunkTimerRef.current = setTimeout(() => {
+      if (chunker.state === 'recording') {
+        try { chunker.stop(); } catch { /* ignore */ }
+      }
+    }, CHUNK_MS);
+  }, [transcribeChunk]);
 
   const startRecording = useCallback(async () => {
     setError(null);
@@ -88,65 +137,22 @@ export default function MeetingNotesNewPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/mp4')
-        ? 'audio/mp4'
-        : '';
-      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      mr.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      mr.onstop = () => {
-        audioBlobRef.current = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
-      };
-      mr.start();
-      mediaRecorderRef.current = mr;
+      const mimeType = pickMimeType();
+      fullMimeRef.current = mimeType || 'audio/webm';
 
-      // Web Speech API for live transcription
-      const SR = getSR();
-      if (SR) {
-        const recognition = new SR();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = lang;
+      const full = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      fullChunksRef.current = [];
+      full.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) fullChunksRef.current.push(e.data);
+      };
+      full.onstop = () => {
+        audioBlobRef.current = new Blob(fullChunksRef.current, { type: mimeType || 'audio/webm' });
+      };
+      full.start();
+      fullRecorderRef.current = full;
 
-        recognition.onresult = (event: SREvent) => {
-          let interimText = '';
-          let finalText = '';
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const res = event.results[i];
-            if (res.isFinal) finalText += res[0].transcript;
-            else interimText += res[0].transcript;
-          }
-          if (finalText) {
-            setTranscript((prev) => (prev ? `${prev} ${finalText.trim()}` : finalText.trim()));
-            setInterim('');
-          } else {
-            setInterim(interimText);
-          }
-        };
-        recognition.onerror = () => {
-          // If web speech fails, we'll fall back to server STT after stop
-          setSttProvider('sarvam-pending');
-        };
-        recognition.onend = () => {
-          // Auto-restart while still recording (browser STT pauses on silence)
-          if (recording && recognitionRef.current === recognition) {
-            try { recognition.start(); } catch { /* ignore */ }
-          }
-        };
-        try {
-          recognition.start();
-          recognitionRef.current = recognition;
-          setSttProvider('browser');
-        } catch {
-          setSttProvider('sarvam-pending');
-        }
-      } else {
-        setSttProvider('sarvam-pending');
-      }
+      recordingRef.current = true;
+      setRecording(true);
 
       startTimeRef.current = Date.now();
       setDuration(0);
@@ -154,68 +160,71 @@ export default function MeetingNotesNewPage() {
         setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 1000);
 
-      setRecording(true);
+      startChunkRecorder();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start recording');
+      setError((err as Error).message || 'Failed to start recording');
+      recordingRef.current = false;
+      setRecording(false);
     }
-  }, [hasWebSpeech, lang, recording]);
+  }, [startChunkRecorder]);
 
   const stopRecording = useCallback(async () => {
+    recordingRef.current = false;
     setRecording(false);
+
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
       durationTimerRef.current = null;
     }
+    if (chunkTimerRef.current) {
+      clearTimeout(chunkTimerRef.current);
+      chunkTimerRef.current = null;
+    }
 
-    try { recognitionRef.current?.stop(); } catch { /* ignore */ }
-    recognitionRef.current = null;
+    // Stop the chunk recorder so the final segment is sent to Sarvam
+    const chunker = chunkRecorderRef.current;
+    if (chunker && chunker.state !== 'inactive') {
+      try { chunker.stop(); } catch { /* ignore */ }
+    }
+    chunkRecorderRef.current = null;
 
-    const mr = mediaRecorderRef.current;
-    if (mr && mr.state !== 'inactive') {
+    // Stop the continuous recorder for storage
+    const full = fullRecorderRef.current;
+    if (full && full.state !== 'inactive') {
       await new Promise<void>((resolve) => {
-        const orig = mr.onstop;
-        mr.onstop = (ev) => {
-          if (typeof orig === 'function') orig.call(mr, ev);
+        const orig = full.onstop;
+        full.onstop = (ev) => {
+          if (typeof orig === 'function') orig.call(full, ev);
           resolve();
         };
-        mr.stop();
+        try { full.stop(); } catch { resolve(); }
       });
     }
+    fullRecorderRef.current = null;
+
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    setInterim('');
+  }, []);
 
-    // Fallback: server-side Sarvam STT if browser STT didn't produce anything
-    if (
-      sttProvider !== 'browser' ||
-      transcriptRef.current.trim().length < 5
-    ) {
-      const blob = audioBlobRef.current;
-      if (blob && blob.size > 500) {
-        try {
-          const sarvamLang = SARVAM_LANG_MAP[lang] || 'unknown';
-          const { transcript: text } = await api.transcribeViaServer(blob, sarvamLang);
-          if (text) {
-            setTranscript((prev) => (prev ? `${prev}\n${text}` : text));
-            setSttProvider('sarvam');
-          }
-        } catch (err) {
-          setError('Browser STT unavailable and Sarvam fallback failed: ' + (err as Error).message);
-        }
-      }
-    }
-  }, [api, lang, sttProvider]);
-
-  const handleImageFiles = (files: FileList | null) => {
+  const handleUploadFiles = (files: FileList | null) => {
     if (!files) return;
-    const added = Array.from(files).map((f) => ({ blob: f, preview: URL.createObjectURL(f) }));
+    addImages(Array.from(files));
+  };
+
+  const addImages = (blobs: Blob[]) => {
+    const added = blobs.map((b) => ({
+      blob: b,
+      preview: URL.createObjectURL(b),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    }));
     setImages((prev) => [...prev, ...added]);
   };
 
-  const removeImage = (idx: number) => {
+  const removeImage = (id: string) => {
     setImages((prev) => {
-      URL.revokeObjectURL(prev[idx].preview);
-      return prev.filter((_, i) => i !== idx);
+      const target = prev.find((i) => i.id === id);
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter((i) => i.id !== id);
     });
   };
 
@@ -225,13 +234,17 @@ export default function MeetingNotesNewPage() {
       setError('Record something or add an image before saving');
       return;
     }
+    if (chunksInFlight > 0) {
+      setError('Waiting for transcription to finish...');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const { id } = await api.create({
-        title: title.trim() || `Meeting ${new Date().toLocaleString()}`,
+        title: title.trim() || defaultTitle(),
         transcript: transcript.trim(),
-        sttProvider: sttProvider === 'sarvam' ? 'sarvam' : 'browser',
+        sttProvider: 'sarvam',
         durationSeconds: duration || null,
         audio: audioBlobRef.current,
         images: images.map((i) => i.blob),
@@ -263,15 +276,15 @@ export default function MeetingNotesNewPage() {
         </div>
 
         <h1 className="font-space text-2xl md:text-3xl font-extrabold text-ink mb-1">Meeting Notes</h1>
-        <p className="text-sm text-muted mb-6">Record, transcribe, capture photos, save.</p>
+        <p className="text-sm text-muted mb-6">Record, transcribe with Sarvam AI, capture photos, save.</p>
 
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Meeting title (optional)"
+          placeholder={defaultTitle()}
           disabled={saving}
-          className="w-full rounded-xl border border-bdl bg-white px-4 py-3 text-base text-ink placeholder-muted/50 focus:border-cyan-2 focus:outline-none focus:ring-1 focus:ring-cyan-2 transition-colors mb-4"
+          className="w-full rounded-xl border border-bdl bg-white px-4 py-3 text-base text-ink placeholder-muted/60 focus:border-cyan-2 focus:outline-none focus:ring-1 focus:ring-cyan-2 transition-colors mb-4"
         />
 
         {/* Recorder card */}
@@ -279,41 +292,42 @@ export default function MeetingNotesNewPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Recording</p>
-              <p className="font-mono text-2xl font-bold text-ink">
+              <p className="font-mono text-2xl font-bold text-ink flex items-center gap-2">
                 {formatDuration(duration)}
-                {recording && <span className="ml-2 inline-block w-2.5 h-2.5 rounded-full bg-red animate-pulse align-middle" />}
+                {recording && <span className="inline-block w-2.5 h-2.5 rounded-full bg-red animate-pulse" />}
               </p>
             </div>
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value)}
-              disabled={recording}
-              className="rounded-lg border border-bdl bg-light-2 px-2 py-1.5 text-xs text-ink disabled:opacity-50"
-            >
-              {LANGS.map((l) => (
-                <option key={l.code} value={l.code}>{l.label}</option>
-              ))}
-            </select>
+            <div className="flex flex-col items-end gap-1">
+              <label className="text-[10px] text-muted uppercase tracking-widest font-semibold">Language</label>
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value)}
+                disabled={recording}
+                className="rounded-lg border border-bdl bg-light-2 px-2 py-1.5 text-xs text-ink disabled:opacity-50 cursor-pointer"
+              >
+                {LANGS.map((l) => (
+                  <option key={l.code} value={l.code}>{l.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="flex gap-2 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
             {!recording ? (
               <button
                 onClick={startRecording}
                 disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-cyan-2 text-white py-3 font-semibold hover:bg-cyan transition-all disabled:opacity-50 cursor-pointer border-none"
+                className="sm:col-span-1 flex items-center justify-center gap-2 rounded-xl bg-cyan-2 text-white py-3 font-semibold hover:bg-cyan transition-all disabled:opacity-50 cursor-pointer border-none shadow-sm"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="12" r="6" />
                 </svg>
-                Start Recording
+                Record
               </button>
             ) : (
               <button
                 onClick={stopRecording}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-red text-white py-3 font-semibold hover:opacity-90 transition-all cursor-pointer border-none"
+                className="sm:col-span-1 flex items-center justify-center gap-2 rounded-xl bg-red text-white py-3 font-semibold hover:opacity-90 transition-all cursor-pointer border-none shadow-sm"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <rect x="6" y="6" width="12" height="12" rx="1.5" />
@@ -324,65 +338,59 @@ export default function MeetingNotesNewPage() {
 
             <button
               type="button"
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={() => setCameraOpen(true)}
               disabled={saving}
-              className="flex items-center justify-center gap-2 rounded-xl bg-white border border-bdl text-ink px-4 py-3 hover:border-cyan-2 hover:text-cyan-2 transition-all disabled:opacity-50 cursor-pointer"
-              title="Take photo"
+              className="flex items-center justify-center gap-2 rounded-xl bg-white border border-bdl text-ink py-3 hover:border-cyan-2 hover:text-cyan-2 transition-all disabled:opacity-50 cursor-pointer font-medium"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>
-              <span className="hidden sm:inline">Photo</span>
+              Camera
             </button>
 
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={saving}
-              className="flex items-center justify-center gap-2 rounded-xl bg-white border border-bdl text-ink px-4 py-3 hover:border-cyan-2 hover:text-cyan-2 transition-all disabled:opacity-50 cursor-pointer"
-              title="Upload images"
+              className="flex items-center justify-center gap-2 rounded-xl bg-white border border-bdl text-ink py-3 hover:border-cyan-2 hover:text-cyan-2 transition-all disabled:opacity-50 cursor-pointer font-medium"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
               </svg>
-              <span className="hidden sm:inline">Upload</span>
+              Upload
             </button>
           </div>
 
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => handleImageFiles(e.target.files)}
-            className="hidden"
-          />
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
             multiple
-            onChange={(e) => handleImageFiles(e.target.files)}
+            onChange={(e) => handleUploadFiles(e.target.files)}
             className="hidden"
           />
 
           <div className="rounded-xl bg-light-2 border border-bdl p-3 min-h-[120px] max-h-[300px] overflow-y-auto">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-muted mb-2">
-              Transcript {sttProvider === 'sarvam' && <span className="text-cyan-2 normal-case font-normal">(via Sarvam AI)</span>}
-              {sttProvider === 'browser' && <span className="text-muted normal-case font-normal">(live via browser)</span>}
-            </p>
-            {transcript || interim ? (
-              <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">
-                {transcript}
-                {interim && <span className="text-muted italic"> {interim}</span>}
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-muted">
+                Transcript <span className="text-cyan-2 normal-case font-normal">via Sarvam AI</span>
               </p>
+              {chunksInFlight > 0 && (
+                <span className="flex items-center gap-1.5 text-[10px] text-cyan-2 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-2 animate-pulse" />
+                  Transcribing...
+                </span>
+              )}
+            </div>
+            {transcript ? (
+              <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">{transcript}</p>
             ) : (
               <p className="text-sm text-muted italic">
-                {hasWebSpeech
-                  ? 'Your speech will appear here as you record.'
-                  : 'Your browser doesn\u2019t support live speech. Audio will be transcribed on save via Sarvam AI.'}
+                {recording
+                  ? 'Speech will appear here after each 20-second segment is transcribed.'
+                  : 'Press Record to start. Speak in any of the supported languages.'}
               </p>
             )}
           </div>
@@ -399,17 +407,29 @@ export default function MeetingNotesNewPage() {
         {/* Images grid */}
         {images.length > 0 && (
           <div className="rounded-2xl border border-bdl bg-white p-4 shadow-sm mb-4">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-muted mb-3">
-              Images ({images.length})
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-muted">
+                Images ({images.length})
+              </p>
+              <button
+                onClick={() => {
+                  images.forEach((i) => URL.revokeObjectURL(i.preview));
+                  setImages([]);
+                }}
+                disabled={saving}
+                className="text-[11px] text-muted hover:text-red bg-transparent border-none cursor-pointer disabled:opacity-40"
+              >
+                Clear all
+              </button>
+            </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {images.map((img, i) => (
-                <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-light-2 group">
+              {images.map((img) => (
+                <div key={img.id} className="relative aspect-square rounded-lg overflow-hidden bg-light-2 border border-bdl">
                   <img src={img.preview} alt="" className="w-full h-full object-cover" />
                   <button
-                    onClick={() => removeImage(i)}
+                    onClick={() => removeImage(img.id)}
                     disabled={saving}
-                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border-none text-xs"
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center cursor-pointer border-none text-base leading-none shadow-md hover:bg-red"
                     title="Remove"
                   >
                     &times;
@@ -426,7 +446,7 @@ export default function MeetingNotesNewPage() {
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 sticky bottom-0 pb-2 bg-gradient-to-t from-light to-transparent pt-2">
           <Link
             to="/meeting-notes"
             className="flex-1 text-center rounded-xl border border-bdl bg-white text-ink py-3 font-medium hover:bg-light-2 transition-colors no-underline"
@@ -435,13 +455,19 @@ export default function MeetingNotesNewPage() {
           </Link>
           <button
             onClick={save}
-            disabled={saving || recording}
-            className="flex-1 rounded-xl bg-cyan-2 text-white py-3 font-bold hover:bg-cyan transition-all disabled:opacity-50 cursor-pointer border-none"
+            disabled={saving || recording || chunksInFlight > 0}
+            className="flex-1 rounded-xl bg-cyan-2 text-white py-3 font-bold hover:bg-cyan transition-all disabled:opacity-50 cursor-pointer border-none shadow-sm"
           >
-            {saving ? 'Saving...' : 'Save Meeting'}
+            {saving ? 'Saving...' : chunksInFlight > 0 ? 'Transcribing...' : 'Save Meeting'}
           </button>
         </div>
       </div>
+
+      <CameraCaptureModal
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(blob) => addImages([blob])}
+      />
     </div>
   );
 }

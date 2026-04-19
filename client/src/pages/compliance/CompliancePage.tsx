@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useLanguage } from '@/contexts/LanguageContext';
 import type { ReactNode } from 'react';
 
 /* ── Shared building blocks for all compliance sub-pages ── */
@@ -15,9 +16,10 @@ export function Hero({ title, subtitle, gradient = 'from-slate-800 via-blue-600 
 }
 
 export function Breadcrumb({ current }: { current: string }) {
+  const { t } = useLanguage();
   return (
     <div className="flex items-center gap-1.5 text-xs text-muted mb-6">
-      <Link to="/compliance" className="text-muted hover:text-cyan-2 no-underline">Compliance</Link>
+      <Link to="/compliance" className="text-muted hover:text-cyan-2 no-underline">{t.compliance.brand}</Link>
       <span>/</span>
       <span className="text-ink font-medium">{current}</span>
     </div>
@@ -124,11 +126,12 @@ export function Section({ title, children }: { title: string; children: ReactNod
 }
 
 export function PageContainer({ children }: { children: ReactNode }) {
+  const { t } = useLanguage();
   return (
     <div className="mx-auto max-w-[900px] px-6 py-8">
       {children}
       <footer className="border-t border-bdl pt-6 mt-8 text-center text-xs text-muted">
-        &copy; 2026 Indian Digital Compliance Guide. For informational purposes only &mdash; not legal advice.
+        &copy; 2026 {t.compliance.heroTitle}. {t.compliance.footerDisclaimer}
       </footer>
     </div>
   );

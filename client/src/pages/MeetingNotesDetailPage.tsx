@@ -18,7 +18,7 @@ function ImageTile({ imageId }: { imageId: number }) {
     <>
       <button
         onClick={() => setExpanded(true)}
-        className="block aspect-square rounded-lg overflow-hidden bg-light-2 border border-bdl cursor-pointer hover:border-cyan-2 transition-all p-0"
+        className="block aspect-square rounded-lg overflow-hidden bg-light-2 border border-bdl cursor-pointer hover:border-cyan-2 hover:shadow-sm transition-all p-0"
       >
         {url ? (
           <img src={url} alt="" className="w-full h-full object-cover" />
@@ -28,10 +28,16 @@ function ImageTile({ imageId }: { imageId: number }) {
       </button>
       {expanded && url && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 cursor-pointer"
           onClick={() => setExpanded(false)}
         >
           <img src={url} alt="" className="max-w-full max-h-full object-contain rounded-lg" />
+          <button
+            onClick={() => setExpanded(false)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center border-none cursor-pointer text-xl"
+          >
+            &times;
+          </button>
         </div>
       )}
     </>
@@ -54,6 +60,14 @@ export default function MeetingNotesDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [savingTitle, setSavingTitle] = useState(false);
+
+  const [editingTranscript, setEditingTranscript] = useState(false);
+  const [transcriptDraft, setTranscriptDraft] = useState('');
+  const [savingTranscript, setSavingTranscript] = useState(false);
+
   const [prompt, setPrompt] = useState('');
   const [promptOutput, setPromptOutput] = useState('');
   const [promptRunning, setPromptRunning] = useState(false);
@@ -74,6 +88,38 @@ export default function MeetingNotesDetailPage() {
   useEffect(() => {
     outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [promptOutput]);
+
+  const saveTitle = async () => {
+    const newTitle = titleDraft.trim();
+    if (!newTitle || !note || newTitle === note.title) {
+      setEditingTitle(false);
+      return;
+    }
+    setSavingTitle(true);
+    try {
+      await api.update(noteId, { title: newTitle });
+      setNote({ ...note, title: newTitle });
+      setEditingTitle(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+
+  const saveTranscript = async () => {
+    if (!note) return;
+    setSavingTranscript(true);
+    try {
+      await api.update(noteId, { transcript: transcriptDraft });
+      setNote({ ...note, transcript: transcriptDraft });
+      setEditingTranscript(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingTranscript(false);
+    }
+  };
 
   const runPrompt = async (text: string) => {
     if (!text.trim() || promptRunning) return;
@@ -119,7 +165,6 @@ export default function MeetingNotesDetailPage() {
         }
       }
 
-      // Refresh to include the saved prompt in history
       const fresh = await api.get(noteId);
       setNote(fresh);
       setPrompt('');
@@ -131,7 +176,7 @@ export default function MeetingNotesDetailPage() {
   };
 
   const deleteNote = async () => {
-    if (!confirm('Delete this meeting note permanently?')) return;
+    if (!confirm('Delete this meeting permanently? This cannot be undone.')) return;
     try {
       await api.remove(noteId);
       navigate('/meeting-notes');
@@ -162,18 +207,74 @@ export default function MeetingNotesDetailPage() {
           &larr; All meetings
         </Link>
 
+        {/* Title — inline editable */}
         <div className="flex items-start justify-between gap-3 mb-2">
-          <h1 className="font-space text-2xl md:text-3xl font-extrabold text-ink">{note.title}</h1>
-          <button
-            onClick={deleteNote}
-            className="text-xs text-muted hover:text-red bg-transparent border-none cursor-pointer shrink-0"
-          >
-            Delete
-          </button>
+          {editingTitle ? (
+            <div className="flex-1 flex gap-2 items-center">
+              <input
+                type="text"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') setEditingTitle(false); }}
+                autoFocus
+                disabled={savingTitle}
+                className="flex-1 rounded-lg border border-cyan-2 bg-white px-3 py-2 font-space text-xl md:text-2xl font-extrabold text-ink focus:outline-none focus:ring-2 focus:ring-cyan-2/40"
+              />
+              <button
+                onClick={saveTitle}
+                disabled={savingTitle}
+                className="rounded-lg bg-cyan-2 text-white px-3 py-2 text-sm font-semibold hover:bg-cyan disabled:opacity-50 cursor-pointer border-none"
+              >
+                {savingTitle ? '...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setEditingTitle(false)}
+                disabled={savingTitle}
+                className="rounded-lg bg-transparent border border-bdl text-muted px-3 py-2 text-sm hover:text-ink cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <>
+              <h1 className="flex-1 font-space text-2xl md:text-3xl font-extrabold text-ink break-words">
+                {note.title}
+              </h1>
+              <div className="flex gap-1 shrink-0">
+                <button
+                  onClick={() => { setTitleDraft(note.title); setEditingTitle(true); }}
+                  className="p-1.5 rounded-lg text-muted hover:text-cyan-2 hover:bg-light-2 bg-transparent border-none cursor-pointer"
+                  title="Rename"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={deleteNote}
+                  className="p-1.5 rounded-lg text-muted hover:text-red hover:bg-red/5 bg-transparent border-none cursor-pointer"
+                  title="Delete"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </>
+          )}
         </div>
         <p className="text-xs text-muted mb-6">
           {new Date(note.createdAt).toLocaleString()}
           {note.sttProvider && <span className="ml-2 text-muted/60">&bull; STT: {note.sttProvider}</span>}
+          {note.durationSeconds != null && (
+            <span className="ml-2 text-muted/60">
+              &bull; {Math.floor(note.durationSeconds / 60)}m {note.durationSeconds % 60}s
+            </span>
+          )}
         </p>
 
         {note.hasAudio && (
@@ -196,11 +297,50 @@ export default function MeetingNotesDetailPage() {
           </div>
         )}
 
+        {/* Transcript — inline editable */}
         <div className="rounded-2xl border border-bdl bg-white p-4 shadow-sm mb-6">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-muted mb-2">Transcript</p>
-          <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">
-            {note.transcript || <span className="italic text-muted">No transcript.</span>}
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Transcript</p>
+            {!editingTranscript && (
+              <button
+                onClick={() => { setTranscriptDraft(note.transcript); setEditingTranscript(true); }}
+                className="text-[11px] text-cyan-2 hover:underline bg-transparent border-none cursor-pointer"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+          {editingTranscript ? (
+            <>
+              <textarea
+                value={transcriptDraft}
+                onChange={(e) => setTranscriptDraft(e.target.value)}
+                disabled={savingTranscript}
+                autoFocus
+                className="w-full rounded-xl border border-bdl bg-white px-3 py-2 text-sm text-ink focus:border-cyan-2 focus:outline-none resize-y min-h-[160px]"
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={saveTranscript}
+                  disabled={savingTranscript}
+                  className="rounded-lg bg-cyan-2 text-white px-4 py-1.5 text-sm font-semibold hover:bg-cyan disabled:opacity-50 cursor-pointer border-none"
+                >
+                  {savingTranscript ? 'Saving...' : 'Save transcript'}
+                </button>
+                <button
+                  onClick={() => setEditingTranscript(false)}
+                  disabled={savingTranscript}
+                  className="rounded-lg bg-transparent border border-bdl text-muted px-4 py-1.5 text-sm hover:text-ink cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">
+              {note.transcript || <span className="italic text-muted">No transcript.</span>}
+            </p>
+          )}
         </div>
 
         {/* Prompt section */}

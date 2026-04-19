@@ -1,15 +1,19 @@
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Hero, Breadcrumb, DataTable, Badge, InfoBox, ResourceList, Section, PageContainer } from './CompliancePage';
 
 export default function ItActPage() {
+  const { t } = useLanguage();
+  const c = t.compliance;
+
   return (
     <>
-      <Hero title="Information Technology Act, 2000" subtitle="India's primary cyber law — legal recognition for electronic records, digital signatures, and cybercrimes" gradient="from-green-800 via-green-600 to-cyan-500" />
+      <Hero title={c.itTitle} subtitle={c.itSubtitle} gradient="from-green-800 via-green-600 to-cyan-500" />
       <PageContainer>
-        <Breadcrumb current="IT Act 2000" />
+        <Breadcrumb current={c.itTitle} />
 
-        <Section title="Key Sections — Electronic Records & Data Protection">
+        <Section title={c.itKeySections}>
           <DataTable
-            headers={['Section', 'Subject', 'Details']}
+            headers={[c.itColSection, c.itColSubject, c.itColDetails]}
             rows={[
               [<Badge color="blue">Sec 4</Badge>, <strong>Legal Recognition of E-Records</strong>, 'Electronic records are legally equivalent to paper documents'],
               [<Badge color="blue">Sec 5</Badge>, <strong>Legal Recognition of E-Signatures</strong>, 'E-signatures have same legal standing as handwritten'],
@@ -23,9 +27,9 @@ export default function ItActPage() {
           />
         </Section>
 
-        <Section title="Cybercrime Provisions">
+        <Section title={c.itCybercrime}>
           <DataTable
-            headers={['Section', 'Offence', 'Penalty']}
+            headers={[c.itColSection, c.itColOffence, c.itColPenalty]}
             rows={[
               [<Badge color="red">Sec 66C</Badge>, 'Identity theft (fraudulent use of e-signatures/passwords)', 'Up to 3 years + \u20B91 lakh fine'],
               [<Badge color="red">Sec 66D</Badge>, 'Cheating by impersonation using computer resources', 'Up to 3 years + \u20B91 lakh fine'],
@@ -36,7 +40,7 @@ export default function ItActPage() {
           />
         </Section>
 
-        <Section title="Key Amendments">
+        <Section title={c.itAmendments}>
           <InfoBox title="2008 Amendment">
             <ul className="list-disc pl-5 space-y-1">
               <li>Added Section 43A (corporate data liability)</li>
@@ -60,7 +64,7 @@ export default function ItActPage() {
           </InfoBox>
         </Section>
 
-        <Section title="Resources & References">
+        <Section title={c.itResources}>
           <ResourceList items={[
             { href: 'https://www.indiacode.nic.in/bitstream/123456789/13116/1/it_act_2000_updated.pdf', title: 'India Code — IT Act 2000 Full Text (PDF)' },
             { href: 'https://cleartax.in/s/it-act-2000', title: 'ClearTax — IT Act 2000 Overview' },

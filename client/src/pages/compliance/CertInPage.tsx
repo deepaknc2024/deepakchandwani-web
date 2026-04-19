@@ -1,27 +1,31 @@
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Hero, Breadcrumb, StatStrip, InfoBox, DataTable, ResourceList, Section, PageContainer } from './CompliancePage';
 
 export default function CertInPage() {
+  const { t } = useLanguage();
+  const c = t.compliance;
+
   return (
     <>
-      <Hero title="CERT-In Directives" subtitle="April 2022 mandatory cybersecurity directions for all organisations in India" gradient="from-red-900 via-red-600 to-orange-500" />
+      <Hero title={c.certTitle} subtitle={c.certSubtitle} gradient="from-red-900 via-red-600 to-orange-500" />
       <PageContainer>
-        <Breadcrumb current="CERT-In Directives" />
+        <Breadcrumb current={c.certTitle} />
 
-        <InfoBox title="Mandatory Compliance" variant="danger">
-          <p>These directions (No. 20(3)/2022-CERT-In, dated April 28, 2022) are <strong>mandatory</strong> for all service providers, intermediaries, data centres, body corporates, and government organisations. Non-compliance attracts penalties under the IT Act.</p>
+        <InfoBox title={c.certMandatory} variant="danger">
+          <p>{c.certMandatoryDesc}</p>
         </InfoBox>
 
         <StatStrip items={[
-          { number: '6 hrs', label: 'Incident Reporting' },
-          { number: '180 days', label: 'Log Retention' },
-          { number: '5 years', label: 'KYC Retention' },
-          { number: 'NTP', label: 'Clock Sync Required' },
+          { number: '6 hrs', label: c.statIncident },
+          { number: '180 days', label: c.statLogs },
+          { number: '5 years', label: c.statKyc },
+          { number: 'NTP', label: c.certNtp },
         ]} />
 
-        <Section title="Key Requirements">
-          <InfoBox title="1. Incident Reporting — 6-Hour Rule">
-            <p className="mb-2">ALL cyber incidents must be reported to CERT-In within <strong>6 hours of discovery</strong>.</p>
-            <p className="font-medium mb-1">Reportable incidents include:</p>
+        <Section title={c.certKeyReqs}>
+          <InfoBox title={c.certIncident}>
+            <p className="mb-2">{c.certIncidentDesc}</p>
+            <p className="font-medium mb-1">{c.certIncidentTypes}</p>
             <ul className="list-disc pl-5 space-y-0.5">
               <li>Unauthorised access to IT systems</li>
               <li>Malware attacks (ransomware, trojans, worms)</li>
@@ -34,46 +38,46 @@ export default function CertInPage() {
             </ul>
           </InfoBox>
 
-          <InfoBox title="2. Log Retention — 180 Days">
+          <InfoBox title={c.certLogs}>
             <ul className="list-disc pl-5 space-y-1">
-              <li>All ICT system logs maintained securely for <strong>180 days (rolling)</strong></li>
-              <li>Logs must be stored <strong>within Indian jurisdiction</strong></li>
-              <li>Must be provided to CERT-In on demand</li>
+              <li>{c.certLog1}</li>
+              <li>{c.certLog2}</li>
+              <li>{c.certLog3}</li>
             </ul>
           </InfoBox>
 
-          <InfoBox title="3. Time Synchronisation">
+          <InfoBox title={c.certNtp}>
             <ul className="list-disc pl-5 space-y-1">
-              <li>Sync ICT clocks to <strong>NTP servers of NIC or NPL</strong></li>
-              <li>Or to NTP servers traceable to these sources</li>
+              <li>{c.certNtp1}</li>
+              <li>{c.certNtp2}</li>
             </ul>
           </InfoBox>
 
-          <InfoBox title="4. VPN Provider Requirements">
+          <InfoBox title={c.certVpn}>
             <ul className="list-disc pl-5 space-y-1">
-              <li>Maintain subscriber records for <strong>5 years</strong> (even after cancellation)</li>
-              <li>Records: customer names, period of hire, IPs allotted, email, address, contacts, purpose</li>
+              <li>{c.certVpn1}</li>
+              <li>{c.certVpn2}</li>
             </ul>
           </InfoBox>
 
-          <InfoBox title="5. Cloud & Data Centre Provider Requirements">
+          <InfoBox title={c.certCloud}>
             <ul className="list-disc pl-5 space-y-1">
-              <li>Maintain customer <strong>KYC records for 5 years</strong></li>
-              <li>Records: validated names, addresses, contacts, IPs, ownership patterns</li>
+              <li>{c.certCloud1}</li>
+              <li>{c.certCloud2}</li>
             </ul>
           </InfoBox>
 
-          <InfoBox title="6. Virtual Asset / Crypto Requirements">
+          <InfoBox title={c.certCrypto}>
             <ul className="list-disc pl-5 space-y-1">
-              <li><strong>KYC + transaction records for 5 years</strong></li>
-              <li>Transactions must be reconstructible: party IDs, IPs, timestamps, public keys, amounts</li>
+              <li>{c.certCrypto1}</li>
+              <li>{c.certCrypto2}</li>
             </ul>
           </InfoBox>
         </Section>
 
-        <Section title="Who Must Comply?">
+        <Section title={c.certWhoTitle}>
           <DataTable
-            headers={['Entity Type', 'Key Obligations']}
+            headers={[c.certColEntity, c.certColObligations]}
             rows={[
               ['Service Providers', '6-hour reporting, 180-day logs, NTP sync'],
               ['Intermediaries', '6-hour reporting, 180-day logs, NTP sync'],
@@ -87,7 +91,7 @@ export default function CertInPage() {
           />
         </Section>
 
-        <Section title="Resources & References">
+        <Section title={c.certResources}>
           <ResourceList items={[
             { href: 'https://www.cert-in.org.in/PDF/CERT-In_Directions_70B_28.04.2022.pdf', title: 'CERT-In Directions — Official PDF' },
             { href: 'https://www.upguard.com/blog/indias-6-hour-data-breach-reporting-rule', title: "UpGuard — India's 6-Hour Rule" },

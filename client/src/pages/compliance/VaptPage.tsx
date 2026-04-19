@@ -1,16 +1,20 @@
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Hero, Breadcrumb, DataTable, Badge, InfoBox, ResourceList, Section, PageContainer } from './CompliancePage';
 
 export default function VaptPage() {
+  const { t } = useLanguage();
+  const c = t.compliance;
+
   return (
     <>
-      <Hero title="VAPT Requirements" subtitle="Vulnerability Assessment & Penetration Testing mandates across Indian regulatory frameworks" gradient="from-cyan-700 via-blue-600 to-slate-800" />
+      <Hero title={c.vaptTitle} subtitle={c.vaptSubtitle} gradient="from-cyan-700 via-blue-600 to-slate-800" />
       <PageContainer>
-        <Breadcrumb current="VAPT Requirements" />
+        <Breadcrumb current={c.vaptTitle} />
 
-        <Section title="Regulatory VAPT Mandates">
-          <p className="text-sm text-muted mb-4">No single unified VAPT law in India — multiple sector regulators impose requirements.</p>
+        <Section title={c.vaptMandates}>
+          <p className="text-sm text-muted mb-4">{c.vaptMandatesDesc}</p>
           <DataTable
-            headers={['Regulator', 'Requirement', 'Frequency', 'Applies To']}
+            headers={[c.vaptColRegulator, c.vaptColReq, c.vaptColFreq, c.vaptColApplies]}
             rows={[
               [<strong>CERT-In</strong>, 'VAPT for critical systems; empanelled auditors for govt', <Badge color="blue">Annually</Badge>, 'Government, critical infra'],
               [<strong>RBI</strong>, 'Vulnerability Assessment for critical systems', <Badge color="red">Every 6 months</Badge>, 'Banks, NBFCs, fintech'],
@@ -22,29 +26,29 @@ export default function VaptPage() {
           />
         </Section>
 
-        <Section title="SEBI CSCRF Timeline">
-          <InfoBox title="SEBI Cybersecurity & Cyber Resilience Framework (Aug 2024)" variant="highlight">
+        <Section title={c.vaptSebiTimeline}>
+          <InfoBox title={c.vaptSebiTitle} variant="highlight">
             <ul className="list-disc pl-5 space-y-1">
-              <li><strong>Report submission:</strong> Within 1 month of testing</li>
-              <li><strong>Vulnerability remediation:</strong> Within 3 months of report</li>
-              <li><strong>Revalidation:</strong> Within 5 months of original testing</li>
-              <li><strong>Critical patching:</strong> Within 24 hours (effective April 1, 2025)</li>
+              <li>{c.vaptSebi1}</li>
+              <li>{c.vaptSebi2}</li>
+              <li>{c.vaptSebi3}</li>
+              <li>{c.vaptSebi4}</li>
             </ul>
           </InfoBox>
         </Section>
 
-        <Section title="RBI IT Governance Requirements">
-          <InfoBox title="RBI Master Direction on IT Governance (2023)">
+        <Section title={c.vaptRbi}>
+          <InfoBox title={c.vaptRbiTitle}>
             <ul className="list-disc pl-5 space-y-1">
-              <li>VAPT throughout lifecycle: pre-implementation, post-implementation, after major changes</li>
-              <li>VA every <strong>6 months</strong> for critical systems</li>
-              <li>PT at least <strong>annually</strong></li>
-              <li>Non-critical: risk-based schedule with documented justification</li>
+              <li>{c.vaptRbi1}</li>
+              <li>{c.vaptRbi2}</li>
+              <li>{c.vaptRbi3}</li>
+              <li>{c.vaptRbi4}</li>
             </ul>
           </InfoBox>
         </Section>
 
-        <Section title="Testing Standards">
+        <Section title={c.vaptStandards}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {['OWASP Top 10 / ASVS', 'SANS Methodology', 'CIS Benchmarks', 'CERT-In Empanelled Auditors'].map((s) => (
               <div key={s} className="bg-white border border-bdl rounded-xl p-4">
@@ -54,7 +58,7 @@ export default function VaptPage() {
           </div>
         </Section>
 
-        <Section title="Resources & References">
+        <Section title={c.vaptResources}>
           <ResourceList items={[
             { href: 'https://www.indusface.com/blog/decoding-sebis-cscrf/', title: 'Indusface — SEBI CSCRF Decoding' },
             { href: 'https://radiant.in/vulnerability-assessment-penetration-testing-vapt-india-2025-updates-radiant-article/', title: 'Radiant — VAPT India 2025 Updates' },

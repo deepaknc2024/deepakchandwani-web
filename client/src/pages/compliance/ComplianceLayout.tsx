@@ -1,19 +1,22 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-
-const NAV_ITEMS = [
-  { to: '/compliance', label: 'Overview' },
-  { to: '/compliance/dpdp-act', label: 'DPDP Act' },
-  { to: '/compliance/vapt', label: 'VAPT' },
-  { to: '/compliance/cert-in', label: 'CERT-In' },
-  { to: '/compliance/it-act', label: 'IT Act' },
-  { to: '/compliance/digital-records', label: 'Digital Records' },
-  { to: '/compliance/safe-hosting', label: 'Safe Hosting' },
-  { to: '/compliance/standards', label: 'Standards' },
-  { to: '/compliance/firms', label: 'Legal Firms' },
-];
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function ComplianceLayout() {
   const { pathname } = useLocation();
+  const { t } = useLanguage();
+  const c = t.compliance;
+
+  const NAV_ITEMS = [
+    { to: '/compliance', label: c.navOverview },
+    { to: '/compliance/dpdp-act', label: c.navDpdp },
+    { to: '/compliance/vapt', label: c.navVapt },
+    { to: '/compliance/cert-in', label: c.navCertIn },
+    { to: '/compliance/it-act', label: c.navItAct },
+    { to: '/compliance/digital-records', label: c.navDigitalRecords },
+    { to: '/compliance/safe-hosting', label: c.navSafeHosting },
+    { to: '/compliance/standards', label: c.navStandards },
+    { to: '/compliance/firms', label: c.navFirms },
+  ];
 
   return (
     <div className="min-h-screen bg-light pt-[58px]">
@@ -26,7 +29,7 @@ export default function ComplianceLayout() {
               className="flex items-center gap-1.5 mr-3 text-ink font-bold text-sm no-underline shrink-0"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Compliance
+              {c.brand}
             </Link>
             {NAV_ITEMS.map(({ to, label }) => {
               const active = pathname === to || (to !== '/compliance' && pathname.startsWith(to));
