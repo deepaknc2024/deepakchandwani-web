@@ -133,6 +133,13 @@ export default function Navbar() {
                 Compliance
               </Link>
               <Link
+                to="/meeting-notes"
+                className="block py-2 px-5 whitespace-nowrap text-[0.82rem] text-muted font-medium no-underline hover:bg-light-2 hover:text-cyan-2 transition-colors"
+                onClick={closeMenu}
+              >
+                Meeting Notes
+              </Link>
+              <Link
                 to="/admin"
                 className="block py-2 px-5 whitespace-nowrap text-[0.82rem] text-muted font-medium no-underline hover:bg-light-2 hover:text-cyan-2 transition-colors"
                 onClick={closeMenu}

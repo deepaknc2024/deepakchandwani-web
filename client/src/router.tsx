@@ -4,6 +4,9 @@ import LandingPage from "@/pages/LandingPage";
 import TranscriptPage from "@/pages/TranscriptPage";
 import BseMeetingPage from "@/pages/BseMeetingPage";
 import AdminPage from "@/pages/AdminPage";
+import MeetingNotesListPage from "@/pages/MeetingNotesListPage";
+import MeetingNotesNewPage from "@/pages/MeetingNotesNewPage";
+import MeetingNotesDetailPage from "@/pages/MeetingNotesDetailPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import LoginPage from "@/pages/LoginPage";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -61,6 +64,30 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <AdminPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "/meeting-notes",
+        element: (
+          <ProtectedRoute>
+            <MeetingNotesListPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "/meeting-notes/new",
+        element: (
+          <ProtectedRoute>
+            <MeetingNotesNewPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "/meeting-notes/:id",
+        element: (
+          <ProtectedRoute>
+            <MeetingNotesDetailPage />
           </ProtectedRoute>
         ),
       },
