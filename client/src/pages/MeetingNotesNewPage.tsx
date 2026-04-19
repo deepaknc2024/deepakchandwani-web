@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMeetingNotesApi } from '@/lib/meeting-notes-api';
-import CameraCaptureModal from '@/components/meeting-notes/CameraCaptureModal';
 
 const LANGS = [
   { code: 'unknown', label: 'Auto-detect' },
@@ -27,6 +26,20 @@ function defaultTitle(): string {
   return `Meeting \u2014 ${date} ${time}`;
 }
 
+function pickAudioMimeType(): string {
+  const prefs = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+    'audio/ogg;codecs=opus',
+  ];
+  for (const p of prefs) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(p)) return p;
+  }
+  return '';
+}
+
 export default function MeetingNotesNewPage() {
   const api = useMeetingNotesApi();
   const navigate = useNavigate();
@@ -40,51 +53,49 @@ export default function MeetingNotesNewPage() {
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [chunksInFlight, setChunksInFlight] = useState(0);
-  const [cameraOpen, setCameraOpen] = useState(false);
 
-  // Recorders
-  const streamRef = useRef<MediaStream | null>(null);
-  const fullRecorderRef = useRef<MediaRecorder | null>(null);
-  const fullChunksRef = useRef<BlobPart[]>([]);
-  const audioBlobRef = useRef<Blob | null>(null);
-  const fullMimeRef = useRef<string>('audio/webm');
+  // Camera state — INLINE (not modal)
+  const [cameraOn, setCameraOn] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
+  const [cameraReady, setCameraReady] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const [hasMultiCam, setHasMultiCam] = useState(false);
 
-  const chunkRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunkBufferRef = useRef<BlobPart[]>([]);
-  const chunkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recordingRef = useRef(false);
+  // Audio recording refs
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const currentCycleChunksRef = useRef<BlobPart[]>([]);
+  const allCycleBlobsRef = useRef<Blob[]>([]);
+  const recordingActiveRef = useRef(false);
+  const cycleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioMimeRef = useRef<string>('audio/webm');
+  const stopResolveRef = useRef<(() => void) | null>(null);
 
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Camera refs
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+
+  // ── Cleanup ──────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (durationTimerRef.current) clearInterval(durationTimerRef.current);
-      if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
+      audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
       images.forEach((i) => URL.revokeObjectURL(i.preview));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pickMimeType = (): string => {
-    const prefs = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/mp4;codecs=mp4a.40.2',
-      'audio/mp4',
-      'audio/ogg;codecs=opus',
-    ];
-    for (const p of prefs) {
-      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(p)) return p;
-    }
-    return '';
-  };
-
+  // ── Transcription ────────────────────────────────────────────────
   const transcribeChunk = useCallback(
     async (blob: Blob) => {
-      if (blob.size < 1200) return;
+      if (blob.size < 1500) return;
       setChunksInFlight((n) => n + 1);
       try {
         const { transcript: text } = await api.transcribeViaServer(blob, lang);
@@ -92,8 +103,8 @@ export default function MeetingNotesNewPage() {
           setTranscript((prev) => (prev ? `${prev} ${text.trim()}` : text.trim()));
         }
       } catch (err) {
-        console.error('[transcribe chunk]', err);
-        setError(`Transcription failed: ${(err as Error).message}`);
+        console.error('[stt]', err);
+        setError(`Transcription failed: ${(err as Error).message}. Audio is still being recorded.`);
       } finally {
         setChunksInFlight((n) => Math.max(0, n - 1));
       }
@@ -101,57 +112,67 @@ export default function MeetingNotesNewPage() {
     [api, lang],
   );
 
-  const startChunkRecorder = useCallback(() => {
-    const stream = streamRef.current;
-    if (!stream || !recordingRef.current) return;
-
-    const mimeType = pickMimeType();
-    const chunker = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-    chunkBufferRef.current = [];
-
-    chunker.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) chunkBufferRef.current.push(e.data);
-    };
-    chunker.onstop = () => {
-      const blob = new Blob(chunkBufferRef.current, { type: mimeType || 'audio/webm' });
-      chunkBufferRef.current = [];
-      transcribeChunk(blob);
-      if (recordingRef.current) {
-        // Small gap to avoid dropping the next syllable — restart immediately
-        startChunkRecorder();
+  // ── Recording: one recorder at a time, 20s cycles ────────────────
+  const startCycle = useCallback(() => {
+    const stream = audioStreamRef.current;
+    if (!stream || !recordingActiveRef.current) {
+      // Final cycle done — resolve any waiting stop promise
+      if (stopResolveRef.current) {
+        stopResolveRef.current();
+        stopResolveRef.current = null;
       }
-    };
-    chunker.start();
-    chunkRecorderRef.current = chunker;
+      return;
+    }
 
-    chunkTimerRef.current = setTimeout(() => {
-      if (chunker.state === 'recording') {
-        try { chunker.stop(); } catch { /* ignore */ }
+    const mime = audioMimeRef.current;
+    const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    currentCycleChunksRef.current = [];
+
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) currentCycleChunksRef.current.push(e.data);
+    };
+    rec.onstop = () => {
+      const blob = new Blob(currentCycleChunksRef.current, { type: mime || 'audio/webm' });
+      currentCycleChunksRef.current = [];
+      if (blob.size > 0) {
+        allCycleBlobsRef.current.push(blob);
+        // Fire-and-forget transcription
+        transcribeChunk(blob);
       }
-    }, CHUNK_MS);
+      // Start next cycle (or resolve stop if user stopped)
+      startCycle();
+    };
+    rec.onerror = (e) => {
+      console.error('[recorder error]', e);
+      setError('Recorder error — try stopping and starting again.');
+    };
+
+    try {
+      rec.start();
+      recorderRef.current = rec;
+
+      cycleTimerRef.current = setTimeout(() => {
+        if (rec.state === 'recording') {
+          try { rec.stop(); } catch { /* ignore */ }
+        }
+      }, CHUNK_MS);
+    } catch (err) {
+      console.error('[recorder start]', err);
+      setError(`Recorder failed: ${(err as Error).message}`);
+      recordingActiveRef.current = false;
+      setRecording(false);
+    }
   }, [transcribeChunk]);
 
   const startRecording = useCallback(async () => {
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      audioStreamRef.current = stream;
+      audioMimeRef.current = pickAudioMimeType() || 'audio/webm';
+      allCycleBlobsRef.current = [];
 
-      const mimeType = pickMimeType();
-      fullMimeRef.current = mimeType || 'audio/webm';
-
-      const full = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      fullChunksRef.current = [];
-      full.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) fullChunksRef.current.push(e.data);
-      };
-      full.onstop = () => {
-        audioBlobRef.current = new Blob(fullChunksRef.current, { type: mimeType || 'audio/webm' });
-      };
-      full.start();
-      fullRecorderRef.current = full;
-
-      recordingRef.current = true;
+      recordingActiveRef.current = true;
       setRecording(true);
 
       startTimeRef.current = Date.now();
@@ -160,52 +181,125 @@ export default function MeetingNotesNewPage() {
         setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 1000);
 
-      startChunkRecorder();
+      startCycle();
     } catch (err) {
-      setError((err as Error).message || 'Failed to start recording');
-      recordingRef.current = false;
+      console.error('[mic permission]', err);
+      setError(`Microphone access failed: ${(err as Error).message}`);
+      recordingActiveRef.current = false;
       setRecording(false);
     }
-  }, [startChunkRecorder]);
+  }, [startCycle]);
 
   const stopRecording = useCallback(async () => {
-    recordingRef.current = false;
+    recordingActiveRef.current = false;
     setRecording(false);
 
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
       durationTimerRef.current = null;
     }
-    if (chunkTimerRef.current) {
-      clearTimeout(chunkTimerRef.current);
-      chunkTimerRef.current = null;
+    if (cycleTimerRef.current) {
+      clearTimeout(cycleTimerRef.current);
+      cycleTimerRef.current = null;
     }
 
-    // Stop the chunk recorder so the final segment is sent to Sarvam
-    const chunker = chunkRecorderRef.current;
-    if (chunker && chunker.state !== 'inactive') {
-      try { chunker.stop(); } catch { /* ignore */ }
-    }
-    chunkRecorderRef.current = null;
-
-    // Stop the continuous recorder for storage
-    const full = fullRecorderRef.current;
-    if (full && full.state !== 'inactive') {
+    // Wait for the current cycle to stop cleanly
+    const rec = recorderRef.current;
+    if (rec && rec.state !== 'inactive') {
       await new Promise<void>((resolve) => {
-        const orig = full.onstop;
-        full.onstop = (ev) => {
-          if (typeof orig === 'function') orig.call(full, ev);
-          resolve();
-        };
-        try { full.stop(); } catch { resolve(); }
+        stopResolveRef.current = resolve;
+        try { rec.stop(); } catch { resolve(); }
+        setTimeout(() => {
+          if (stopResolveRef.current) {
+            stopResolveRef.current();
+            stopResolveRef.current = null;
+          }
+        }, 3000);
       });
     }
-    fullRecorderRef.current = null;
+    recorderRef.current = null;
 
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioStreamRef.current = null;
   }, []);
 
+  const getFullAudioBlob = (): Blob | null => {
+    const blobs = allCycleBlobsRef.current;
+    if (!blobs.length) return null;
+    return new Blob(blobs, { type: audioMimeRef.current || 'audio/webm' });
+  };
+
+  // ── Inline camera ────────────────────────────────────────────────
+  const openCamera = useCallback(async () => {
+    setCameraError(null);
+    setCameraReady(false);
+    try {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoIns = devices.filter((d) => d.kind === 'videoinput');
+        setHasMultiCam(videoIns.length > 1);
+      } catch { /* ignore */ }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: cameraFacing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+      cameraStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => setCameraReady(true);
+        videoRef.current.play().catch(() => { /* autoplay might need gesture */ });
+      }
+      setCameraOn(true);
+    } catch (err) {
+      const msg = (err as Error).name === 'NotAllowedError'
+        ? 'Camera permission denied. Allow access in browser settings.'
+        : (err as Error).message || 'Failed to open camera';
+      setCameraError(msg);
+    }
+  }, [cameraFacing]);
+
+  const closeCamera = useCallback(() => {
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraOn(false);
+    setCameraReady(false);
+  }, []);
+
+  const switchCamera = useCallback(async () => {
+    const next = cameraFacing === 'environment' ? 'user' : 'environment';
+    setCameraFacing(next);
+    closeCamera();
+    // Restart with new facing
+    setTimeout(() => openCamera(), 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraFacing, closeCamera, openCamera]);
+
+  const snapPhoto = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !cameraReady) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+
+    setFlash(true);
+    setTimeout(() => setFlash(false), 150);
+
+    canvas.toBlob(
+      (blob) => {
+        if (blob) addImages([blob]);
+      },
+      'image/jpeg',
+      0.92,
+    );
+  }, [cameraReady]);
+
+  // ── Image management ─────────────────────────────────────────────
   const handleUploadFiles = (files: FileList | null) => {
     if (!files) return;
     addImages(Array.from(files));
@@ -228,14 +322,18 @@ export default function MeetingNotesNewPage() {
     });
   };
 
+  // ── Save ─────────────────────────────────────────────────────────
   const save = async () => {
     if (recording) await stopRecording();
-    if (!transcript.trim() && !audioBlobRef.current && images.length === 0) {
+    if (cameraOn) closeCamera();
+
+    const audioBlob = getFullAudioBlob();
+    if (!transcript.trim() && !audioBlob && images.length === 0) {
       setError('Record something or add an image before saving');
       return;
     }
     if (chunksInFlight > 0) {
-      setError('Waiting for transcription to finish...');
+      setError('Waiting for transcription to finish — try again in a moment.');
       return;
     }
     setSaving(true);
@@ -246,7 +344,7 @@ export default function MeetingNotesNewPage() {
         transcript: transcript.trim(),
         sttProvider: 'sarvam',
         durationSeconds: duration || null,
-        audio: audioBlobRef.current,
+        audio: audioBlob,
         images: images.map((i) => i.blob),
       });
       navigate(`/meeting-notes/${id}`);
@@ -338,15 +436,19 @@ export default function MeetingNotesNewPage() {
 
             <button
               type="button"
-              onClick={() => setCameraOpen(true)}
+              onClick={() => (cameraOn ? closeCamera() : openCamera())}
               disabled={saving}
-              className="flex items-center justify-center gap-2 rounded-xl bg-white border border-bdl text-ink py-3 hover:border-cyan-2 hover:text-cyan-2 transition-all disabled:opacity-50 cursor-pointer font-medium"
+              className={`flex items-center justify-center gap-2 rounded-xl py-3 transition-all disabled:opacity-50 cursor-pointer font-medium ${
+                cameraOn
+                  ? 'bg-cyan-2/10 border border-cyan-2 text-cyan-2'
+                  : 'bg-white border border-bdl text-ink hover:border-cyan-2 hover:text-cyan-2'
+              }`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>
-              Camera
+              {cameraOn ? 'Close Camera' : 'Camera'}
             </button>
 
             <button
@@ -380,7 +482,7 @@ export default function MeetingNotesNewPage() {
               {chunksInFlight > 0 && (
                 <span className="flex items-center gap-1.5 text-[10px] text-cyan-2 font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-2 animate-pulse" />
-                  Transcribing...
+                  Transcribing {chunksInFlight}...
                 </span>
               )}
             </div>
@@ -390,7 +492,7 @@ export default function MeetingNotesNewPage() {
               <p className="text-sm text-muted italic">
                 {recording
                   ? 'Speech will appear here after each 20-second segment is transcribed.'
-                  : 'Press Record to start. Speak in any of the supported languages.'}
+                  : 'Press Record to start. Speak in any supported language.'}
               </p>
             )}
           </div>
@@ -403,6 +505,68 @@ export default function MeetingNotesNewPage() {
             className="w-full mt-3 rounded-xl border border-bdl bg-white px-3 py-2 text-sm text-ink placeholder-muted/50 focus:border-cyan-2 focus:outline-none resize-y min-h-[80px]"
           />
         </div>
+
+        {/* INLINE camera preview */}
+        {(cameraOn || cameraError) && (
+          <div className="rounded-2xl border border-cyan-2/40 bg-black p-0 shadow-sm mb-4 overflow-hidden relative">
+            <div className="flex items-center justify-between px-4 py-2 bg-black/90">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-white">Camera</p>
+              <div className="flex gap-2">
+                {hasMultiCam && (
+                  <button
+                    onClick={switchCamera}
+                    className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-8 h-8 flex items-center justify-center border-none cursor-pointer"
+                    title="Switch camera"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1 4 1 10 7 10" />
+                      <polyline points="23 20 23 14 17 14" />
+                      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  onClick={closeCamera}
+                  className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-8 h-8 flex items-center justify-center border-none cursor-pointer text-base"
+                  title="Close camera"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+            <div className="relative bg-black aspect-video flex items-center justify-center">
+              {cameraError ? (
+                <p className="text-red text-sm px-6 text-center py-10">{cameraError}</p>
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="max-w-full max-h-full w-full h-full object-contain"
+                  />
+                  {flash && <div className="absolute inset-0 bg-white opacity-70 pointer-events-none" />}
+                  {!cameraReady && (
+                    <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">
+                      Starting camera...
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {!cameraError && (
+              <div className="flex items-center justify-center py-4 bg-black">
+                <button
+                  onClick={snapPhoto}
+                  disabled={!cameraReady}
+                  className="w-14 h-14 rounded-full bg-white border-4 border-white/50 shadow-lg disabled:opacity-40 cursor-pointer active:scale-95 transition-transform"
+                  aria-label="Capture photo"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Images grid */}
         {images.length > 0 && (
@@ -441,7 +605,7 @@ export default function MeetingNotesNewPage() {
         )}
 
         {error && (
-          <div className="rounded-xl bg-red/5 border border-red/20 px-4 py-2.5 text-sm text-red mb-4">
+          <div className="rounded-xl bg-red/5 border border-red/20 px-4 py-2.5 text-sm text-red mb-4 whitespace-pre-wrap">
             {error}
           </div>
         )}
@@ -462,12 +626,6 @@ export default function MeetingNotesNewPage() {
           </button>
         </div>
       </div>
-
-      <CameraCaptureModal
-        open={cameraOpen}
-        onClose={() => setCameraOpen(false)}
-        onCapture={(blob) => addImages([blob])}
-      />
     </div>
   );
 }

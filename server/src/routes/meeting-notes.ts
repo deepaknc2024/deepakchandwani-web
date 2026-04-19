@@ -297,14 +297,18 @@ router.post(
       return res.status(503).json({ ok: false, error: 'Server-side STT not configured' });
     }
 
+    console.log(`[mn-stt] incoming ${audio.buffer.length} bytes, mime=${audio.mimetype}, lang=${languageCode}`);
+
     try {
       const form = new FormData();
-      const blob = new Blob([new Uint8Array(audio.buffer)], { type: audio.mimetype || 'audio/webm' });
+      // Strip codec suffix — Sarvam wants plain mime like "audio/webm"
+      const baseMime = (audio.mimetype || 'audio/webm').split(';')[0].trim();
+      const blob = new Blob([new Uint8Array(audio.buffer)], { type: baseMime });
       const ext =
-        audio.mimetype?.includes('webm') ? 'webm' :
-        audio.mimetype?.includes('mp4') ? 'm4a' :
-        audio.mimetype?.includes('wav') ? 'wav' :
-        audio.mimetype?.includes('ogg') ? 'ogg' : 'webm';
+        baseMime.includes('webm') ? 'webm' :
+        baseMime.includes('mp4') ? 'm4a' :
+        baseMime.includes('wav') ? 'wav' :
+        baseMime.includes('ogg') ? 'ogg' : 'webm';
       form.append('file', blob, `recording.${ext}`);
       form.append('model', 'saarika:v2');
       form.append('language_code', languageCode);
@@ -319,8 +323,11 @@ router.post(
 
       if (!resp.ok) {
         const err = await resp.text();
-        console.log(`[meeting-notes] Sarvam STT failed ${resp.status}: ${err.substring(0, 200)}`);
-        return res.status(502).json({ ok: false, error: 'STT provider failed' });
+        console.log(`[mn-stt] Sarvam ${resp.status}: ${err.substring(0, 400)}`);
+        return res.status(502).json({
+          ok: false,
+          error: `Sarvam ${resp.status}: ${err.substring(0, 200)}`,
+        });
       }
 
       const data = (await resp.json()) as { transcript?: string; language_code?: string };
