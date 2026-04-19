@@ -310,7 +310,7 @@ router.post(
         baseMime.includes('wav') ? 'wav' :
         baseMime.includes('ogg') ? 'ogg' : 'webm';
       form.append('file', blob, `recording.${ext}`);
-      form.append('model', 'saarika:v2');
+      form.append('model', 'saarika:v2.5');
       form.append('language_code', languageCode);
       form.append('with_timestamps', 'false');
 
