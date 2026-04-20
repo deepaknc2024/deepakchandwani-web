@@ -75,7 +75,24 @@ function fmtInr(n: number): string {
   return `\u20B9${inr.toFixed(2)}`;
 }
 
-function PlayButton({ text, getToken, onCost }: { text: string; getToken: () => Record<string, string>; onCost?: (c: CostInfo) => void }) {
+interface PlayEntry {
+  langCode: string;
+  langLabel: string;
+  cost: CostInfo;
+  provider: string | null;
+  at: number;
+}
+
+interface PlayButtonProps {
+  text: string;
+  getToken: () => Record<string, string>;
+  onCost?: (c: CostInfo, isNew: boolean) => void;
+  promptId?: number;
+  initialHistory?: PlayEntry[];
+  api?: ReturnType<typeof useMeetingNotesApi>;
+}
+
+function PlayButton({ text, getToken, onCost, promptId, initialHistory, api }: PlayButtonProps) {
   const [lang, setLang] = useState('en');
   const [loading, setLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -83,15 +100,24 @@ function PlayButton({ text, getToken, onCost }: { text: string; getToken: () => 
   const [provider, setProvider] = useState<string | null>(null);
   const [translatedText, setTranslatedText] = useState<string | null>(null);
 
-  interface PlayEntry {
-    langCode: string;
-    langLabel: string;
-    cost: CostInfo;
-    provider: string | null;
-    at: number;
-  }
-  const [history, setHistory] = useState<PlayEntry[]>([]);
+  const [history, setHistory] = useState<PlayEntry[]>(initialHistory || []);
+
+  // Replay persisted costs into the session total on mount (once)
+  useEffect(() => {
+    if (history.length && onCost) {
+      history.forEach((h) => onCost(h.cost, false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const buttonCostTotal = history.reduce((n, h) => n + h.cost.totalUsd, 0);
+
+  const clearHistory = async () => {
+    if (promptId && api) {
+      try { await api.clearTtsPlays(promptId); } catch { /* ignore */ }
+    }
+    setHistory([]);
+  };
 
   const play = async () => {
     setErr(null);
@@ -124,8 +150,26 @@ function PlayButton({ text, getToken, onCost }: { text: string; getToken: () => 
       if (data.translatedText) setTranslatedText(data.translatedText);
       if (data.cost) {
         const langLabel = TTS_LANGS.find((l) => l.code === lang)?.label || lang;
-        setHistory((prev) => [...prev, { langCode: lang, langLabel, cost: data.cost, provider: data.provider || null, at: Date.now() }]);
-        onCost?.(data.cost);
+        const entry: PlayEntry = { langCode: lang, langLabel, cost: data.cost, provider: data.provider || null, at: Date.now() };
+        setHistory((prev) => [...prev, entry]);
+        onCost?.(data.cost, true);
+        // Persist to DB if we have a promptId
+        if (promptId && api) {
+          api.recordTtsPlay(promptId, {
+            langCode: lang,
+            langLabel,
+            costTotalUsd: data.cost.totalUsd,
+            costTranslationUsd: data.cost.translationUsd,
+            costTtsUsd: data.cost.ttsUsd,
+            translationModel: data.cost.translationModel || null,
+            ttsProvider: data.cost.ttsProvider || null,
+            inputTokens: data.cost.inputTokens || 0,
+            outputTokens: data.cost.outputTokens || 0,
+            ttsChars: data.cost.ttsChars || 0,
+          }).catch((e) => {
+            console.error('[tts-play persist]', e);
+          });
+        }
       }
     } catch (e) {
       setErr((e as Error).message);
@@ -170,13 +214,22 @@ function PlayButton({ text, getToken, onCost }: { text: string; getToken: () => 
       {audioUrl && <audio controls autoPlay src={audioUrl} className="w-full mt-2" />}
       {history.length > 0 && (
         <div className="mt-3 rounded-lg bg-light-2/60 border border-bdl px-3 py-2">
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center justify-between mb-1.5 gap-2">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Cost per language</p>
-            <span className="text-[10px] font-mono">
-              Total: <span className="text-ink font-bold">{fmtUsd(buttonCostTotal)}</span>
-              <span className="mx-1 text-muted/50">&bull;</span>
-              <span className="text-ink font-bold">{fmtInr(buttonCostTotal)}</span>
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono">
+                Total: <span className="text-ink font-bold">{fmtUsd(buttonCostTotal)}</span>
+                <span className="mx-1 text-muted/50">&bull;</span>
+                <span className="text-ink font-bold">{fmtInr(buttonCostTotal)}</span>
+              </span>
+              <button
+                onClick={clearHistory}
+                className="text-[10px] text-muted hover:text-red bg-transparent border-none cursor-pointer"
+                title="Clear cost history for this response"
+              >
+                Clear
+              </button>
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             {history.map((h, i) => (
@@ -285,10 +338,10 @@ export default function MeetingNotesDetailPage() {
   const [promptModel, setPromptModel] = useState<string | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
-  // Running total across all Play actions on this page
+  // Running total across all Play actions on this page (includes persisted entries)
   const [playCountTotal, setPlayCountTotal] = useState(0);
   const [costTotalUsd, setCostTotalUsd] = useState(0);
-  const handlePlayCost = (c: CostInfo) => {
+  const handlePlayCost = (c: CostInfo, _isNew: boolean) => {
     setPlayCountTotal((n) => n + 1);
     setCostTotalUsd((v) => v + c.totalUsd);
   };
@@ -623,7 +676,7 @@ export default function MeetingNotesDetailPage() {
                 {promptRunning && <span className="inline-block w-1.5 h-4 bg-cyan-2 align-middle ml-0.5 animate-pulse" />}
               </p>
               {!promptRunning && promptOutput.trim() && (
-                <PlayButton text={promptOutput} getToken={api.authHeader} onCost={handlePlayCost} />
+                <PlayButton text={promptOutput} getToken={api.authHeader} onCost={handlePlayCost} api={api} />
               )}
               <div ref={outputRef} />
             </div>
@@ -659,7 +712,20 @@ export default function MeetingNotesDetailPage() {
                   <p className="mt-1 text-sm text-body whitespace-pre-wrap leading-relaxed">
                     {p.response}
                   </p>
-                  <PlayButton text={p.response} getToken={api.authHeader} onCost={handlePlayCost} />
+                  <PlayButton
+                    text={p.response}
+                    getToken={api.authHeader}
+                    onCost={handlePlayCost}
+                    promptId={p.id}
+                    initialHistory={p.ttsPlays.map((tp) => ({
+                      langCode: tp.langCode,
+                      langLabel: tp.langLabel,
+                      cost: { ...tp.cost },
+                      provider: tp.cost.ttsProvider,
+                      at: new Date(tp.createdAt).getTime(),
+                    }))}
+                    api={api}
+                  />
                 </details>
               ))}
             </div>

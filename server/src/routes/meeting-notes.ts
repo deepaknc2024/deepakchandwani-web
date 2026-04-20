@@ -172,6 +172,35 @@ router.get('/meeting-notes/:id', authenticateSession, async (req: Request, res: 
        WHERE note_id=$1 ORDER BY created_at DESC LIMIT 50`,
       [noteId],
     );
+    const plays = await query(
+      `SELECT id, prompt_id, lang_code, lang_label, cost_total_usd, cost_translation_usd, cost_tts_usd,
+              translation_model, tts_provider, input_tokens, output_tokens, tts_chars, created_at
+       FROM meeting_note_tts_plays
+       WHERE note_id=$1 ORDER BY created_at`,
+      [noteId],
+    );
+    const playsByPrompt = new Map<number, Array<Record<string, unknown>>>();
+    for (const row of plays.rows) {
+      if (row.prompt_id == null) continue;
+      const list = playsByPrompt.get(row.prompt_id) || [];
+      list.push({
+        id: row.id,
+        langCode: row.lang_code,
+        langLabel: row.lang_label,
+        cost: {
+          totalUsd: Number(row.cost_total_usd),
+          translationUsd: Number(row.cost_translation_usd),
+          ttsUsd: Number(row.cost_tts_usd),
+          translationModel: row.translation_model,
+          ttsProvider: row.tts_provider,
+          inputTokens: row.input_tokens,
+          outputTokens: row.output_tokens,
+          ttsChars: row.tts_chars,
+        },
+        createdAt: row.created_at,
+      });
+      playsByPrompt.set(row.prompt_id, list);
+    }
 
     const row = n.rows[0];
     res.json({
@@ -196,6 +225,7 @@ router.get('/meeting-notes/:id', authenticateSession, async (req: Request, res: 
           response: p.response,
           modelUsed: p.model_used,
           createdAt: p.created_at,
+          ttsPlays: playsByPrompt.get(p.id) || [],
         })),
       },
     });
@@ -538,6 +568,71 @@ router.patch('/meeting-notes/:id', authenticateSession, async (req: Request, res
   } catch (err) {
     console.error('[meeting-notes] update error:', err);
     res.status(500).json({ ok: false, error: 'Failed to update' });
+  }
+});
+
+// ── POST /meeting-note-prompts/:promptId/tts-plays — record a TTS play ───
+router.post('/meeting-note-prompts/:promptId/tts-plays', authenticateSession, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const promptId = parseInt(String(req.params.promptId), 10);
+  const body = req.body ?? {};
+  if (!promptId) return res.status(400).json({ ok: false, error: 'Invalid id' });
+  try {
+    // Verify the prompt belongs to a note owned by this user
+    const check = await query(
+      `SELECT p.id, p.note_id FROM meeting_note_prompts p
+       JOIN meeting_notes n ON n.id = p.note_id
+       WHERE p.id = $1 AND n.user_id = $2`,
+      [promptId, user.user_id],
+    );
+    if (check.rowCount === 0) return res.status(404).json({ ok: false, error: 'Not found' });
+    const noteId = check.rows[0].note_id as number;
+
+    const ins = await query(
+      `INSERT INTO meeting_note_tts_plays
+         (note_id, prompt_id, lang_code, lang_label, cost_total_usd, cost_translation_usd, cost_tts_usd,
+          translation_model, tts_provider, input_tokens, output_tokens, tts_chars)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING id, created_at`,
+      [
+        noteId,
+        promptId,
+        String(body.langCode || '').slice(0, 20),
+        String(body.langLabel || '').slice(0, 60),
+        Number(body.costTotalUsd || 0),
+        Number(body.costTranslationUsd || 0),
+        Number(body.costTtsUsd || 0),
+        body.translationModel ? String(body.translationModel).slice(0, 120) : null,
+        body.ttsProvider ? String(body.ttsProvider).slice(0, 120) : null,
+        parseInt(String(body.inputTokens || 0), 10) || 0,
+        parseInt(String(body.outputTokens || 0), 10) || 0,
+        parseInt(String(body.ttsChars || 0), 10) || 0,
+      ],
+    );
+    res.json({ ok: true, id: ins.rows[0].id, createdAt: ins.rows[0].created_at });
+  } catch (err) {
+    console.error('[mn-tts-play] insert error:', err);
+    res.status(500).json({ ok: false, error: 'Failed to save' });
+  }
+});
+
+// ── DELETE /meeting-note-prompts/:promptId/tts-plays — clear history for one prompt ─
+router.delete('/meeting-note-prompts/:promptId/tts-plays', authenticateSession, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const promptId = parseInt(String(req.params.promptId), 10);
+  if (!promptId) return res.status(400).json({ ok: false, error: 'Invalid id' });
+  try {
+    const check = await query(
+      `SELECT 1 FROM meeting_note_prompts p JOIN meeting_notes n ON n.id = p.note_id
+       WHERE p.id = $1 AND n.user_id = $2`,
+      [promptId, user.user_id],
+    );
+    if (check.rowCount === 0) return res.status(404).json({ ok: false, error: 'Not found' });
+    await query('DELETE FROM meeting_note_tts_plays WHERE prompt_id = $1', [promptId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[mn-tts-play] delete error:', err);
+    res.status(500).json({ ok: false, error: 'Failed to clear' });
   }
 });
 

@@ -17,12 +17,32 @@ export interface NoteImage {
   sortOrder: number;
 }
 
+export interface TtsPlayCost {
+  totalUsd: number;
+  translationUsd: number;
+  ttsUsd: number;
+  translationModel: string | null;
+  ttsProvider: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  ttsChars: number;
+}
+
+export interface TtsPlay {
+  id: number;
+  langCode: string;
+  langLabel: string;
+  cost: TtsPlayCost;
+  createdAt: string;
+}
+
 export interface NotePrompt {
   id: number;
   prompt: string;
   response: string;
   modelUsed: string | null;
   createdAt: string;
+  ttsPlays: TtsPlay[];
 }
 
 export interface NoteDetail {
@@ -92,6 +112,40 @@ export function useMeetingNotesApi() {
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Failed');
       return { id: data.note.id };
+    },
+
+    async recordTtsPlay(
+      promptId: number,
+      play: {
+        langCode: string;
+        langLabel: string;
+        costTotalUsd: number;
+        costTranslationUsd: number;
+        costTtsUsd: number;
+        translationModel: string | null;
+        ttsProvider: string | null;
+        inputTokens: number;
+        outputTokens: number;
+        ttsChars: number;
+      },
+    ): Promise<{ id: number; createdAt: string }> {
+      const r = await fetch(`/api/meeting-note-prompts/${promptId}/tts-plays`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify(play),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Failed to save play');
+      return { id: data.id, createdAt: data.createdAt };
+    },
+
+    async clearTtsPlays(promptId: number): Promise<void> {
+      const r = await fetch(`/api/meeting-note-prompts/${promptId}/tts-plays`, {
+        method: 'DELETE',
+        headers: authHeader(),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Failed');
     },
 
     async update(id: number, patch: { title?: string; transcript?: string }): Promise<void> {
