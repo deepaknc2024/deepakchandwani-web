@@ -139,6 +139,42 @@ export function useMeetingNotesApi() {
       return { id: data.id, createdAt: data.createdAt };
     },
 
+    async appendToNote(
+      id: number,
+      params: { audio?: Blob | null; images?: Blob[]; appendTranscript?: string; durationSeconds?: number },
+    ): Promise<{ imagesAdded: number; audioAppended: boolean; transcriptAppended: boolean }> {
+      const fd = new FormData();
+      if (params.audio) fd.append('audio', params.audio, 'audio.webm');
+      (params.images || []).forEach((img, i) => fd.append('images', img, `image-${i}.jpg`));
+      if (params.appendTranscript != null) fd.append('appendTranscript', params.appendTranscript);
+      if (params.durationSeconds != null) fd.append('durationSeconds', String(params.durationSeconds));
+      const r = await fetch(`/api/meeting-notes/${id}/append`, {
+        method: 'POST',
+        headers: authHeader(),
+        body: fd,
+      });
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error(r.status === 413 ? 'Upload too large' : `Server error ${r.status}`);
+      }
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Append failed');
+      return {
+        imagesAdded: data.imagesAdded,
+        audioAppended: data.audioAppended,
+        transcriptAppended: data.transcriptAppended,
+      };
+    },
+
+    async deleteImage(imageId: number): Promise<void> {
+      const r = await fetch(`/api/meeting-note-images/${imageId}`, {
+        method: 'DELETE',
+        headers: authHeader(),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Failed');
+    },
+
     async clearTtsPlays(promptId: number): Promise<void> {
       const r = await fetch(`/api/meeting-note-prompts/${promptId}/tts-plays`, {
         method: 'DELETE',

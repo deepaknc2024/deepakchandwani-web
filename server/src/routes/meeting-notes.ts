@@ -115,6 +115,134 @@ router.post(
   },
 );
 
+// ── POST /meeting-notes/:id/append — add images and/or another recording ─
+router.post(
+  '/meeting-notes/:id/append',
+  authenticateSession,
+  upload.fields([
+    { name: 'audio', maxCount: 1 },
+    { name: 'images', maxCount: 20 },
+  ]),
+  async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    const noteId = parseInt(String(req.params.id), 10);
+    const files = req.files as { audio?: Express.Multer.File[]; images?: Express.Multer.File[] };
+    const { appendTranscript, durationSeconds } = req.body ?? {};
+
+    if (!noteId) return res.status(400).json({ ok: false, error: 'Invalid id' });
+
+    try {
+      const own = await query(
+        'SELECT id, transcript, audio_filename, audio_duration_seconds FROM meeting_notes WHERE id=$1 AND user_id=$2',
+        [noteId, user.user_id],
+      );
+      if (own.rowCount === 0) return res.status(404).json({ ok: false, error: 'Not found' });
+      const existing = own.rows[0];
+
+      fs.mkdirSync(noteDir(noteId), { recursive: true });
+
+      // ── Append audio: binary-concat the new WebM onto the existing file ──
+      let updatedAudioFilename: string | null = existing.audio_filename;
+      const audio = files.audio?.[0];
+      if (audio && audio.buffer.length > 0) {
+        const ext =
+          audio.mimetype.includes('webm') ? '.webm' :
+          audio.mimetype.includes('mp4') || audio.mimetype.includes('m4a') ? '.m4a' :
+          audio.mimetype.includes('ogg') ? '.ogg' :
+          audio.mimetype.includes('wav') ? '.wav' : '.webm';
+
+        if (existing.audio_filename) {
+          // Append to existing file
+          const target = path.join(noteDir(noteId), existing.audio_filename);
+          fs.appendFileSync(target, audio.buffer);
+        } else {
+          // First audio for this note
+          updatedAudioFilename = `audio${ext}`;
+          fs.writeFileSync(path.join(noteDir(noteId), updatedAudioFilename), audio.buffer);
+        }
+      }
+
+      // ── Append images ──
+      const images = files.images || [];
+      const existingCount = await query(
+        'SELECT COUNT(*)::int AS c FROM meeting_note_images WHERE note_id=$1',
+        [noteId],
+      );
+      const startOrder = Number(existingCount.rows[0]?.c || 0);
+      const imageRows: Array<{ id: number; mime_type: string }> = [];
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        const ext =
+          img.mimetype.includes('jpeg') || img.mimetype.includes('jpg') ? '.jpg' :
+          img.mimetype.includes('png') ? '.png' :
+          img.mimetype.includes('webp') ? '.webp' : '.jpg';
+        const filename = `img-${randName(ext)}`;
+        fs.writeFileSync(path.join(noteDir(noteId), filename), img.buffer);
+        const ir = await query(
+          `INSERT INTO meeting_note_images (note_id, filename, mime_type, sort_order)
+           VALUES ($1, $2, $3, $4) RETURNING id, mime_type`,
+          [noteId, filename, img.mimetype, startOrder + i],
+        );
+        imageRows.push(ir.rows[0]);
+      }
+
+      // ── Append transcript + update audio metadata ──
+      const addText = (appendTranscript || '').toString().trim();
+      const extraSeconds = durationSeconds ? parseInt(durationSeconds, 10) : 0;
+      const newTranscript = addText
+        ? (existing.transcript ? `${existing.transcript}\n\n${addText}` : addText)
+        : existing.transcript;
+      const newDuration = (existing.audio_duration_seconds || 0) + (isNaN(extraSeconds) ? 0 : extraSeconds);
+
+      await query(
+        `UPDATE meeting_notes
+           SET transcript = $1,
+               audio_filename = $2,
+               audio_duration_seconds = $3,
+               updated_at = NOW()
+         WHERE id = $4`,
+        [newTranscript, updatedAudioFilename, newDuration || null, noteId],
+      );
+
+      res.json({
+        ok: true,
+        imagesAdded: imageRows.length,
+        audioAppended: !!(audio && audio.buffer.length > 0),
+        transcriptAppended: !!addText,
+        newDurationSeconds: newDuration,
+      });
+    } catch (err) {
+      console.error('[meeting-notes] append error:', err);
+      res.status(500).json({ ok: false, error: 'Failed to append' });
+    }
+  },
+);
+
+// ── DELETE /meeting-note-images/:imageId — remove a single image ─────
+router.delete('/meeting-note-images/:imageId', authenticateSession, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const imageId = parseInt(String(req.params.imageId), 10);
+  if (!imageId) return res.status(400).json({ ok: false, error: 'Invalid id' });
+  try {
+    const r = await query(
+      `SELECT i.id, i.note_id, i.filename FROM meeting_note_images i
+       JOIN meeting_notes n ON n.id = i.note_id
+       WHERE i.id=$1 AND n.user_id=$2`,
+      [imageId, user.user_id],
+    );
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'Not found' });
+    const row = r.rows[0];
+    await query('DELETE FROM meeting_note_images WHERE id=$1', [imageId]);
+    try {
+      fs.unlinkSync(path.join(noteDir(row.note_id), row.filename));
+    } catch { /* ignore */ }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[meeting-notes] delete image error:', err);
+    res.status(500).json({ ok: false, error: 'Failed to delete image' });
+  }
+});
+
 // ── GET /meeting-notes — list (grouped client-side) ──────────────────
 router.get('/meeting-notes', authenticateSession, async (req: Request, res: Response) => {
   const user = (req as any).user;

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMeetingNotesApi, useBlobUrl, type NoteDetail } from '@/lib/meeting-notes-api';
+import AppendRecorder from '@/components/meeting-notes/AppendRecorder';
 
 const SUGGESTIONS = [
   'Summarize this meeting in 5 bullets',
@@ -332,6 +333,7 @@ export default function MeetingNotesDetailPage() {
   const [transcriptDraft, setTranscriptDraft] = useState('');
   const [savingTranscript, setSavingTranscript] = useState(false);
 
+  const [appendOpen, setAppendOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [promptOutput, setPromptOutput] = useState('');
   const [promptRunning, setPromptRunning] = useState(false);
@@ -548,6 +550,30 @@ export default function MeetingNotesDetailPage() {
             </span>
           )}
         </p>
+
+        {appendOpen ? (
+          <AppendRecorder
+            noteId={note.id}
+            onSaved={async () => {
+              setAppendOpen(false);
+              // Re-fetch so new images/transcript/duration show
+              try {
+                const fresh = await api.get(note.id);
+                setNote(fresh);
+              } catch (err) {
+                setError((err as Error).message);
+              }
+            }}
+            onCancel={() => setAppendOpen(false)}
+          />
+        ) : (
+          <button
+            onClick={() => setAppendOpen(true)}
+            className="w-full mb-4 rounded-xl border border-dashed border-cyan-2/40 bg-white/40 py-2.5 text-sm text-cyan-2 font-semibold hover:bg-cyan-2/5 transition-colors cursor-pointer"
+          >
+            + Record more / add images
+          </button>
+        )}
 
         {note.hasAudio && (
           <div className="rounded-2xl border border-bdl bg-white p-4 shadow-sm mb-4">
