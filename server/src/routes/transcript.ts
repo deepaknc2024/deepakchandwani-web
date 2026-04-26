@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import { spawn } from 'node:child_process';
+import { mkdtemp, readdir, readFile, rm, access } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { config } from '../config.js';
 
 const router = Router();
@@ -223,6 +227,109 @@ async function fetchViaWatchPage(
   return { lines, title, tracks };
 }
 
+// ── Method 0: yt-dlp with cookies (bypasses YouTube IP bot detection) ──
+
+async function fetchViaYtDlp(
+  videoId: string
+): Promise<{ lines: TranscriptLine[]; title: string }> {
+  await access(config.ytdlpCookiesPath).catch(() => {
+    throw new Error('NO_COOKIES');
+  });
+
+  const workDir = await mkdtemp(join(tmpdir(), 'ytdlp-'));
+  try {
+    const args = [
+      '--skip-download',
+      '--write-auto-sub',
+      '--write-sub',
+      '--sub-langs', 'en.*,en,hi.*,hi',
+      '--sub-format', 'vtt',
+      '--ignore-no-formats-error',
+      '--cookies', config.ytdlpCookiesPath,
+      '--no-warnings',
+      '--print-json',
+      '--no-playlist',
+      '-o', join(workDir, '%(id)s.%(ext)s'),
+      `https://www.youtube.com/watch?v=${videoId}`,
+    ];
+
+    const { stdout, stderr, code } = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
+      const child = spawn(config.ytdlpPath, args, { timeout: 45000 });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (d) => { stdout += d.toString(); });
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.on('close', (code) => resolve({ stdout, stderr, code: code ?? -1 }));
+      child.on('error', () => resolve({ stdout, stderr, code: -1 }));
+    });
+
+    if (code !== 0) {
+      console.log(`[transcript] yt-dlp exited ${code}: ${stderr.substring(0, 400)}`);
+      if (stderr.includes('not a bot') || stderr.includes('Sign in')) throw new Error('COOKIES_EXPIRED');
+      throw new Error(`YT_DLP_FAILED`);
+    }
+
+    let title = 'Untitled Video';
+    try {
+      const meta = JSON.parse(stdout.split('\n').find((l) => l.trim().startsWith('{')) || '{}');
+      if (meta.title) title = meta.title;
+    } catch { /* ignore */ }
+
+    const files = await readdir(workDir);
+    const subFiles = files.filter((f) => /\.(json3|srv3|vtt)$/.test(f));
+    if (!subFiles.length) throw new Error('NO_CAPTIONS');
+
+    subFiles.sort((a, b) => {
+      const score = (f: string) => {
+        let s = 0;
+        if (/\.en\./.test(f) || /\.en-/.test(f)) s += 100;
+        if (/\.hi\./.test(f) || /\.hi-/.test(f)) s += 50;
+        if (f.endsWith('.json3')) s += 10;
+        if (f.endsWith('.srv3')) s += 5;
+        if (/auto/i.test(f)) s -= 1;
+        return s;
+      };
+      return score(b) - score(a);
+    });
+
+    const pick = subFiles[0];
+    const body = await readFile(join(workDir, pick), 'utf8');
+
+    let lines: TranscriptLine[] = [];
+    if (pick.endsWith('.json3')) {
+      lines = parseJSON3(JSON.parse(body));
+    } else if (pick.endsWith('.srv3')) {
+      lines = parseXML(body);
+    } else if (pick.endsWith('.vtt')) {
+      lines = parseVTT(body);
+    }
+
+    return { lines, title };
+  } finally {
+    rm(workDir, { recursive: true, force: true }).catch(() => { /* ignore */ });
+  }
+}
+
+function parseVTT(vtt: string): TranscriptLine[] {
+  const lines: TranscriptLine[] = [];
+  const blocks = vtt.split(/\r?\n\r?\n/);
+  const tsRe = /(\d+):(\d+):(\d+)\.(\d+)\s+-->\s+(\d+):(\d+):(\d+)\.(\d+)/;
+  const toSec = (h: string, m: string, s: string, ms: string) =>
+    parseInt(h, 10) * 3600 + parseInt(m, 10) * 60 + parseInt(s, 10) + parseInt(ms, 10) / 1000;
+  for (const block of blocks) {
+    const m = block.match(tsRe);
+    if (!m) continue;
+    const start = toSec(m[1], m[2], m[3], m[4]);
+    const end = toSec(m[5], m[6], m[7], m[8]);
+    const textLines = block.split(/\r?\n/).slice(1).filter((l) => !tsRe.test(l));
+    const text = decodeEntities(
+      textLines.join(' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+    ).trim();
+    if (text) lines.push({ start, dur: end - start, text });
+  }
+  return lines;
+}
+
 // ── Method 2: InnerTube API (ANDROID client — most reliable for captions) ──
 
 const ANDROID_VERSION = '20.10.38';
@@ -309,18 +416,31 @@ router.get('/transcript', async (req, res) => {
   let title = 'Untitled Video';
   const errors: string[] = [];
 
-  // Method 1: InnerTube ANDROID API (most reliable)
+  // Method 1: yt-dlp with cookies (reliable against YouTube bot detection)
   try {
-    const result = await fetchViaInnerTube(videoId);
+    const result = await fetchViaYtDlp(videoId);
     lines = result.lines;
     title = result.title;
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown';
-    errors.push(`InnerTube: ${msg}`);
-    console.log(`[transcript] InnerTube failed for ${videoId}: ${msg}`);
+    errors.push(`yt-dlp: ${msg}`);
+    console.log(`[transcript] yt-dlp failed for ${videoId}: ${msg}`);
   }
 
-  // Method 2: Watch page HTML parse (fallback)
+  // Method 2: InnerTube ANDROID API (fallback)
+  if (!lines.length) {
+    try {
+      const result = await fetchViaInnerTube(videoId);
+      lines = result.lines;
+      title = result.title;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown';
+      errors.push(`InnerTube: ${msg}`);
+      console.log(`[transcript] InnerTube failed for ${videoId}: ${msg}`);
+    }
+  }
+
+  // Method 3: Watch page HTML parse (last resort)
   if (!lines.length) {
     try {
       const result = await fetchViaWatchPage(videoId);
@@ -342,6 +462,8 @@ router.get('/transcript', async (req, res) => {
       userMessage = 'This video has no captions/subtitles available. The creator may have disabled them.';
     } else if (errorDetail.includes('NO_PLAYER_RESPONSE')) {
       userMessage = 'Could not load video data from YouTube. The video may be private or removed.';
+    } else if (errorDetail.includes('COOKIES_EXPIRED')) {
+      userMessage = 'YouTube session expired. Cookies need to be refreshed on the server.';
     }
     return res.status(404).json({ ok: false, error: userMessage, debug: errorDetail });
   }
