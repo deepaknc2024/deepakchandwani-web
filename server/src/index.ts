@@ -14,6 +14,7 @@ import authRouter from './routes/auth.js';
 import ttsRouter from './routes/tts.js';
 import adminRouter from './routes/admin.js';
 import meetingNotesRouter from './routes/meeting-notes.js';
+import aryanMathRouter from './routes/aryan-math.js';
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api', authRouter);
 app.use('/api', ttsRouter);
 app.use('/api', adminRouter);
 app.use('/api', meetingNotesRouter);
+app.use('/api', aryanMathRouter);
 
 const server = createServer(app);
 
