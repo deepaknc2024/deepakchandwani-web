@@ -135,19 +135,59 @@ router.post('/aryan/sessions/:id/end', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Session list (history) ──────────────────────────────────────────
+// ── Distinct player list ────────────────────────────────────────────
+router.get('/aryan/players', async (_req, res) => {
+  const r = await query(
+    `SELECT player_name, COUNT(*)::int AS sessions,
+            COALESCE(MAX(started_at), NOW()) AS last_played
+       FROM aryan.sessions
+      GROUP BY player_name
+      ORDER BY sessions DESC, player_name ASC`
+  );
+  res.json({ ok: true, players: r.rows });
+});
+
+// ── Session list (history) with filters ─────────────────────────────
 router.get('/aryan/sessions', async (req, res) => {
-  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string, 10) || 30));
+  const limit = Math.max(1, Math.min(200, parseInt(req.query.limit as string, 10) || 30));
+  const player = (req.query.player as string | undefined)?.trim() || null;
+  const dateFrom = (req.query.date_from as string | undefined) || null;
+  const dateTo = (req.query.date_to as string | undefined) || null;
+  const sort = (req.query.sort as string | undefined) || 'date_desc';
+
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (player) { params.push(player); where.push(`player_name = $${params.length}`); }
+  if (dateFrom) { params.push(dateFrom); where.push(`started_at >= $${params.length}::timestamptz`); }
+  if (dateTo) { params.push(dateTo); where.push(`started_at < ($${params.length}::timestamptz + INTERVAL '1 day')`); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const orderMap: Record<string, string> = {
+    date_desc: 'started_at DESC',
+    date_asc: 'started_at ASC',
+    score_desc: 'score DESC, started_at DESC',
+    score_asc: 'score ASC, started_at DESC',
+    accuracy_desc: 'accuracy_pct DESC, started_at DESC',
+    accuracy_asc: 'accuracy_pct ASC, started_at DESC',
+    player_asc: 'player_name ASC, started_at DESC',
+  };
+  const orderBy = orderMap[sort] || orderMap.date_desc;
+
+  params.push(limit);
   const r = await query(
     `SELECT id, player_name, topic_filter, target_questions, questions_answered,
             correct_count, total_seconds, score, status, started_at, ended_at,
             CASE WHEN questions_answered>0
                  THEN ROUND(100.0 * correct_count / questions_answered)::int
-                 ELSE 0 END AS accuracy_pct
+                 ELSE 0 END AS accuracy_pct,
+            CASE WHEN questions_answered>0
+                 THEN ROUND(total_seconds / questions_answered, 1)
+                 ELSE 0 END AS avg_seconds_per_q
        FROM aryan.sessions
-      ORDER BY started_at DESC
-      LIMIT $1`,
-    [limit]
+       ${whereSql}
+      ORDER BY ${orderBy}
+      LIMIT $${params.length}`,
+    params
   );
   res.json({ ok: true, sessions: r.rows });
 });
