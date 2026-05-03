@@ -227,6 +227,52 @@ async function fetchViaWatchPage(
   return { lines, title, tracks };
 }
 
+// ── Method 0a: Apify YouTube transcript actor (most reliable, paid-per-use) ──
+
+async function fetchViaApify(
+  videoId: string
+): Promise<{ lines: TranscriptLine[]; title: string }> {
+  if (!config.apifyToken) throw new Error('NO_APIFY_TOKEN');
+
+  const url = `https://api.apify.com/v2/acts/supreme_coder~youtube-transcript-scraper/run-sync-get-dataset-items?token=${config.apifyToken}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      urls: [{ url: `https://www.youtube.com/watch?v=${videoId}` }],
+      languages: ['en', 'hi'],
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+
+  if (!resp.ok) throw new Error(`APIFY_HTTP_${resp.status}`);
+  const items = await resp.json() as Array<{
+    transcript?: Array<{ text: string; start: number; duration: number }>;
+    title?: string;
+    videoTitle?: string;
+    language?: string;
+    languageCode?: string;
+    errorCode?: string;
+    error?: string;
+  }>;
+
+  if (!items?.length) throw new Error('APIFY_EMPTY');
+  const item = items[0];
+  if (item.errorCode) {
+    console.log(`[transcript] Apify error: ${item.errorCode} ${item.error?.substring(0, 200)}`);
+    throw new Error(item.errorCode === 'TranscriptNotFound' ? 'NO_CAPTIONS' : 'APIFY_ERROR');
+  }
+  if (!item.transcript?.length) throw new Error('NO_CAPTIONS');
+
+  const lines: TranscriptLine[] = item.transcript.map((t) => ({
+    start: t.start,
+    dur: t.duration,
+    text: t.text.replace(/\n/g, ' ').trim(),
+  })).filter((l) => l.text);
+
+  return { lines, title: item.title || item.videoTitle || 'Untitled Video' };
+}
+
 // ── Method 0: yt-dlp with cookies (bypasses YouTube IP bot detection) ──
 
 async function fetchViaYtDlp(
@@ -416,18 +462,31 @@ router.get('/transcript', async (req, res) => {
   let title = 'Untitled Video';
   const errors: string[] = [];
 
-  // Method 1: yt-dlp with cookies (reliable against YouTube bot detection)
+  // Method 1: Apify (reliable, paid-per-use)
   try {
-    const result = await fetchViaYtDlp(videoId);
+    const result = await fetchViaApify(videoId);
     lines = result.lines;
     title = result.title;
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown';
-    errors.push(`yt-dlp: ${msg}`);
-    console.log(`[transcript] yt-dlp failed for ${videoId}: ${msg}`);
+    errors.push(`Apify: ${msg}`);
+    console.log(`[transcript] Apify failed for ${videoId}: ${msg}`);
   }
 
-  // Method 2: InnerTube ANDROID API (fallback)
+  // Method 2: yt-dlp with cookies (free fallback)
+  if (!lines.length) {
+    try {
+      const result = await fetchViaYtDlp(videoId);
+      lines = result.lines;
+      title = result.title;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown';
+      errors.push(`yt-dlp: ${msg}`);
+      console.log(`[transcript] yt-dlp failed for ${videoId}: ${msg}`);
+    }
+  }
+
+  // Method 3: InnerTube ANDROID API (fallback)
   if (!lines.length) {
     try {
       const result = await fetchViaInnerTube(videoId);

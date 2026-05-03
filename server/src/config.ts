@@ -30,4 +30,5 @@ export const config = {
   contactEmail: process.env.CONTACT_EMAIL || 'deepakchandwani@yahoo.com',
   ytdlpPath: process.env.YTDLP_PATH || 'yt-dlp',
   ytdlpCookiesPath: process.env.YTDLP_COOKIES_PATH || '/opt/deepakchandwani-web/youtube-cookies.txt',
+  apifyToken: process.env.APIFY_TOKEN || '',
 };
