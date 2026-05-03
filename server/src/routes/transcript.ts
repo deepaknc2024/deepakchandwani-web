@@ -248,8 +248,7 @@ async function fetchViaApify(
   if (!resp.ok) throw new Error(`APIFY_HTTP_${resp.status}`);
   const items = await resp.json() as Array<{
     transcript?: Array<{ text: string; start: number; duration: number }>;
-    title?: string;
-    videoTitle?: string;
+    videoDetails?: { title?: string };
     language?: string;
     languageCode?: string;
     errorCode?: string;
@@ -270,7 +269,7 @@ async function fetchViaApify(
     text: t.text.replace(/\n/g, ' ').trim(),
   })).filter((l) => l.text);
 
-  return { lines, title: item.title || item.videoTitle || 'Untitled Video' };
+  return { lines, title: item.videoDetails?.title || 'Untitled Video' };
 }
 
 // ── Method 0: yt-dlp with cookies (bypasses YouTube IP bot detection) ──
