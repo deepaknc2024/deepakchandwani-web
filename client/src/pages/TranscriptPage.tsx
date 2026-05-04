@@ -42,7 +42,7 @@ export default function TranscriptPage() {
     transcript.fetch(url);
   }
 
-  const handleSummarize = useCallback(async () => {
+  const handleSummarize = useCallback(async (opts: { style: "default" | "ppt" | "custom"; customPrompt?: string }) => {
     if (!transcript.lines.length) return;
 
     setIsSummarizing(true);
@@ -57,7 +57,12 @@ export default function TranscriptPage() {
       const resp = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: fullText, title: transcript.title }),
+        body: JSON.stringify({
+          transcript: fullText,
+          title: transcript.title,
+          style: opts.style,
+          customPrompt: opts.customPrompt,
+        }),
       });
 
       if (!resp.ok) {

@@ -568,7 +568,9 @@ router.get('/transcript-proxy', async (req, res) => {
 // ── Summarize transcript via OpenRouter ──────────────────────────────
 
 router.post('/summarize', async (req, res) => {
-  const { transcript, title } = req.body as { transcript?: string; title?: string };
+  const { transcript, title, style, customPrompt } = req.body as {
+    transcript?: string; title?: string; style?: string; customPrompt?: string;
+  };
 
   if (!transcript || transcript.length < 20) {
     return res.status(400).json({ ok: false, error: 'Transcript text is required' });
@@ -582,7 +584,8 @@ router.post('/summarize', async (req, res) => {
   const words = transcript.split(/\s+/);
   const truncated = words.length > 12000 ? words.slice(0, 12000).join(' ') + '\n\n[Transcript truncated...]' : transcript;
 
-  const systemPrompt = `You are an expert content summarizer. Extract the SUBSTANCE from a YouTube video transcript.
+  const SYSTEM_PROMPTS: Record<string, string> = {
+    default: `You are an expert content summarizer. Extract the SUBSTANCE from a YouTube video transcript.
 
 RULES:
 - Focus ONLY on the actual ideas, arguments, facts, insights, and conclusions. This is what matters.
@@ -594,11 +597,39 @@ RULES:
 - Keep it tight. Every sentence should carry information. If a sentence could be removed without losing substance, remove it.
 - Aim for 300-600 words depending on video length. Not a tweet, not an essay.
 - End with "## Key Takeaways" — 3-5 bullet points of the most actionable/important insights.
-- Write directly. No "The speaker discusses..." — just state what was said as fact.`;
+- Write directly. No "The speaker discusses..." — just state what was said as fact.`,
+
+    ppt: `You are an expert at turning video content into a presentation deck.
+
+Output a slide-deck outline in clean markdown that can be copy-pasted directly into PowerPoint or Google Slides.
+
+FORMAT (strict):
+- Slide 1 is the title slide: "# <Title>" then a one-line subtitle.
+- Each subsequent slide starts with "## Slide N: <Slide Title>" (a punchy 3-7 word title).
+- Under each slide title, give 3-6 bullet points (use "-"). Each bullet 6-14 words. Concrete and specific.
+- Optionally include "**Speaker note:**" line below the bullets with 1-2 sentences of context the presenter would say aloud.
+- Aim for 6-12 slides total depending on content depth.
+- Last slide is "## Slide N: Key Takeaways" — 3-5 bullets of the most important points.
+
+RULES:
+- Skip filler, intros, sponsor segments, audience interaction.
+- Use specific data, numbers, names, frameworks mentioned in the video.
+- Bullets are statements, not full sentences. Active voice. No fluff.
+- Group related ideas — don't follow video chronology blindly.`,
+  };
+
+  let systemPrompt: string;
+  if (style === 'custom' && customPrompt && customPrompt.trim().length > 5) {
+    systemPrompt = customPrompt.trim() + '\n\nOutput in clean markdown.';
+  } else if (style === 'ppt') {
+    systemPrompt = SYSTEM_PROMPTS.ppt;
+  } else {
+    systemPrompt = SYSTEM_PROMPTS.default;
+  }
 
   const userPrompt = title
-    ? `Summarize this YouTube video transcript in detail.\n\nVideo Title: "${title}"\n\nTranscript:\n${truncated}`
-    : `Summarize this YouTube video transcript in detail.\n\nTranscript:\n${truncated}`;
+    ? `Summarize this YouTube video transcript.\n\nVideo Title: "${title}"\n\nTranscript:\n${truncated}`
+    : `Summarize this YouTube video transcript.\n\nTranscript:\n${truncated}`;
 
   // Models to try in order: free first, then paid fallback
   const MODELS = [

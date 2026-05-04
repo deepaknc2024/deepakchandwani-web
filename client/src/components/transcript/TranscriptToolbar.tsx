@@ -1,6 +1,9 @@
+import { useState } from "react";
 import type { TranscriptLine } from "@/types";
 import { formatTime } from "@/lib/vtt-parser";
 import { useLanguage } from "@/contexts/LanguageContext";
+
+export type SummaryStyle = "default" | "ppt" | "custom";
 
 interface TranscriptToolbarProps {
   lines: TranscriptLine[];
@@ -10,7 +13,7 @@ interface TranscriptToolbarProps {
   onToggleTimestamps: () => void;
   view: "lines" | "full";
   onChangeView: (view: "lines" | "full") => void;
-  onSummarize: () => void;
+  onSummarize: (opts: { style: SummaryStyle; customPrompt?: string }) => void;
   isSummarizing: boolean;
 }
 
@@ -26,6 +29,12 @@ export default function TranscriptToolbar({
   isSummarizing,
 }: TranscriptToolbarProps) {
   const { t } = useLanguage();
+  const [style, setStyle] = useState<SummaryStyle>("default");
+  const [customPrompt, setCustomPrompt] = useState("");
+
+  function runSummary() {
+    onSummarize({ style, customPrompt: style === "custom" ? customPrompt : undefined });
+  }
 
   function copyAll() {
     const text = lines.map((l) => `[${formatTime(l.start)}]  ${l.text}`).join("\n");
@@ -68,8 +77,8 @@ export default function TranscriptToolbar({
             {"\u2b07"} {t.transcript.download}
           </button>
           <button
-            onClick={onSummarize}
-            disabled={isSummarizing}
+            onClick={runSummary}
+            disabled={isSummarizing || (style === "custom" && customPrompt.trim().length < 5)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-cyan-2 to-indigo px-4 py-2 text-xs font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:pointer-events-none disabled:opacity-60"
           >
             {isSummarizing ? (
@@ -82,6 +91,39 @@ export default function TranscriptToolbar({
             )}
           </button>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-cyan-2/20 bg-gradient-to-br from-cyan-2/5 to-indigo/5 p-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-bold text-muted">Summary style:</span>
+          {([
+            { id: "default", label: "\ud83d\udcc4 Default", hint: "Concise topic-grouped summary" },
+            { id: "ppt", label: "\ud83d\udcca PPT / Slides", hint: "Slide-deck outline ready to paste" },
+            { id: "custom", label: "\u270f\ufe0f Custom", hint: "Write your own instructions" },
+          ] as const).map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => setStyle(opt.id)}
+              title={opt.hint}
+              className={`rounded-lg px-3 py-1.5 font-bold transition-all ${
+                style === opt.id
+                  ? "bg-gradient-to-br from-indigo to-cyan-2 text-white shadow-sm"
+                  : "border border-light-3 bg-white text-muted hover:border-indigo/40"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {style === "custom" && (
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            placeholder="e.g. Summarize as 5 study notes for a 10-year-old in simple language\u2026"
+            rows={3}
+            className="mt-2 w-full resize-y rounded-lg border border-light-3 bg-white px-3 py-2 text-xs text-ink placeholder:text-muted/60 focus:border-indigo focus:outline-none"
+          />
+        )}
       </div>
 
       <div className="flex gap-2">
