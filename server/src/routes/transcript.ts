@@ -786,14 +786,20 @@ router.post('/prompt-creator', async (req, res) => {
     return res.status(500).json({ ok: false, error: 'Prompt creator service not configured' });
   }
 
-  const systemPrompt = `You are a prompt engineer. The user describes loosely what they want done with a YouTube video transcript. Your job: rewrite their request as a clear, detailed system prompt that another LLM will follow to produce that output.
+  const systemPrompt = `You write SYSTEM PROMPTS for a downstream LLM that will receive a YouTube video transcript and produce a final deliverable for the user.
 
-Output ONLY the prompt text — no preamble, no explanation, no markdown code fences. The prompt should:
-- Start with a one-line role/persona ("You are...").
-- State the desired output format precisely (slides, bullet list, study notes, study cards, table, etc.).
-- Specify length, structure, headings, and any constraints (number of items, target audience, tone, language level).
-- Include rules about what to skip (filler, sponsor segments, etc.) when relevant.
-- Be 80-200 words. Self-contained.`;
+CRITICAL: The prompt you output will be sent verbatim as the system message to that downstream LLM, paired with the transcript as the user message. The downstream LLM must produce the ACTUAL final deliverable (slides, summary, notes, table, workflow, etc.) — NOT another prompt, NOT instructions for someone else, NOT a template.
+
+Therefore:
+- Write the prompt as a DIRECT instruction to the downstream LLM ("You are a teacher. Read the transcript and produce..." NOT "Generate a prompt that...").
+- Never ask the downstream LLM to "output a prompt", "create a prompt", "produce instructions" or anything meta. It must produce the deliverable itself.
+- Specify role, exact output format (slides, numbered list, table, markdown headings…), length, audience/tone, and what to skip (filler, sponsor segments).
+- Be 80-200 words. Self-contained.
+
+OUTPUT: only the prompt text — no preamble, no explanation, no markdown code fences, no "Here is the prompt:" header.
+
+EXAMPLE (good output):
+You are an expert workflow analyst. Read the transcript of a technical talk and extract the complete step-by-step workflow it describes. Present it as a numbered list where each step is one concise sentence stating the purpose and key tools involved, followed by indented bullets for sub-tasks. After the numbered list, add an "## Overall Goal" section with 3-4 bullet points describing the high-level objective. Use precise technical language for senior engineers. Skip filler, sponsor segments and audience interaction. Do not cap the workflow length.`;
 
   try {
     const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
