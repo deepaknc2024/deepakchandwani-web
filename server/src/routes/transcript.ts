@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { spawn } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,6 +7,10 @@ import { join } from 'node:path';
 import { config } from '../config.js';
 
 const router = Router();
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB cap for short voice clips
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -767,6 +772,109 @@ RULES:
       res.write(`data: ${JSON.stringify({ error: 'Stream interrupted' })}\n\n`);
       res.end();
     }
+  }
+});
+
+// ── POST /prompt-creator — expand a rough idea into a detailed system prompt ──
+
+router.post('/prompt-creator', async (req, res) => {
+  const { idea } = req.body as { idea?: string };
+  if (!idea || idea.trim().length < 3) {
+    return res.status(400).json({ ok: false, error: 'Tell us what kind of summary you want.' });
+  }
+  if (!config.openrouterApiKey) {
+    return res.status(500).json({ ok: false, error: 'Prompt creator service not configured' });
+  }
+
+  const systemPrompt = `You are a prompt engineer. The user describes loosely what they want done with a YouTube video transcript. Your job: rewrite their request as a clear, detailed system prompt that another LLM will follow to produce that output.
+
+Output ONLY the prompt text — no preamble, no explanation, no markdown code fences. The prompt should:
+- Start with a one-line role/persona ("You are...").
+- State the desired output format precisely (slides, bullet list, study notes, study cards, table, etc.).
+- Specify length, structure, headings, and any constraints (number of items, target audience, tone, language level).
+- Include rules about what to skip (filler, sponsor segments, etc.) when relevant.
+- Be 80-200 words. Self-contained.`;
+
+  try {
+    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.openrouterApiKey}`,
+        'HTTP-Referer': 'https://web.deepakchandwani.com',
+        'X-Title': 'Deepak Chandwani - Prompt Creator',
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-120b:free',
+        stream: false,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: idea.trim().slice(0, 2000) },
+        ],
+        max_tokens: 600,
+        temperature: 0.4,
+      }),
+      signal: AbortSignal.timeout(45000),
+    });
+
+    if (!r.ok) {
+      const err = await r.text();
+      console.log(`[prompt-creator] OpenRouter ${r.status}: ${err.substring(0, 200)}`);
+      return res.status(502).json({ ok: false, error: 'Prompt generation failed' });
+    }
+    const data = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const prompt = data.choices?.[0]?.message?.content?.trim() || '';
+    if (!prompt) return res.status(502).json({ ok: false, error: 'Empty response' });
+    res.json({ ok: true, prompt });
+  } catch (err) {
+    console.error('[prompt-creator] error:', err);
+    res.status(500).json({ ok: false, error: 'Prompt generation failed' });
+  }
+});
+
+// ── POST /stt-quick — short-clip speech-to-text via Sarvam (no auth) ──
+
+router.post('/stt-quick', audioUpload.single('audio'), async (req, res) => {
+  const audio = req.file;
+  const languageCode = (req.body?.languageCode as string) || 'unknown';
+
+  if (!audio || audio.buffer.length < 500) {
+    return res.status(400).json({ ok: false, error: 'Audio is required' });
+  }
+  if (!config.sarvamApiKey) {
+    return res.status(503).json({ ok: false, error: 'STT not configured' });
+  }
+
+  try {
+    const form = new FormData();
+    const baseMime = (audio.mimetype || 'audio/webm').split(';')[0].trim();
+    const blob = new Blob([new Uint8Array(audio.buffer)], { type: baseMime });
+    const ext =
+      baseMime.includes('webm') ? 'webm' :
+      baseMime.includes('mp4') ? 'm4a' :
+      baseMime.includes('wav') ? 'wav' :
+      baseMime.includes('ogg') ? 'ogg' : 'webm';
+    form.append('file', blob, `clip.${ext}`);
+    form.append('model', 'saarika:v2.5');
+    form.append('language_code', languageCode);
+    form.append('with_timestamps', 'false');
+
+    const r = await fetch('https://api.sarvam.ai/speech-to-text', {
+      method: 'POST',
+      headers: { 'api-subscription-key': config.sarvamApiKey },
+      body: form,
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!r.ok) {
+      const err = await r.text();
+      console.log(`[stt-quick] Sarvam ${r.status}: ${err.substring(0, 300)}`);
+      return res.status(502).json({ ok: false, error: `STT failed (${r.status})` });
+    }
+    const data = await r.json() as { transcript?: string; language_code?: string };
+    res.json({ ok: true, transcript: data.transcript || '', languageCode: data.language_code || languageCode });
+  } catch (err) {
+    console.error('[stt-quick] error:', err);
+    res.status(500).json({ ok: false, error: 'STT failed' });
   }
 });
 

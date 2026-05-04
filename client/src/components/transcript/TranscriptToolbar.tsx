@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { TranscriptLine } from "@/types";
 import { formatTime } from "@/lib/vtt-parser";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -31,9 +31,86 @@ export default function TranscriptToolbar({
   const { t } = useLanguage();
   const [style, setStyle] = useState<SummaryStyle>("default");
   const [customPrompt, setCustomPrompt] = useState("");
+  const [showCreator, setShowCreator] = useState(false);
+  const [idea, setIdea] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [creatorError, setCreatorError] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   function runSummary() {
     onSummarize({ style, customPrompt: style === "custom" ? customPrompt : undefined });
+  }
+
+  async function generatePrompt() {
+    if (idea.trim().length < 3) return;
+    setIsCreating(true);
+    setCreatorError(null);
+    try {
+      const r = await fetch("/api/prompt-creator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea: idea.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || "Failed");
+      setCustomPrompt(data.prompt);
+      setStyle("custom");
+      setShowCreator(false);
+    } catch (e) {
+      setCreatorError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  async function startRecording() {
+    setCreatorError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      rec.onstop = async () => {
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: mime });
+        if (blob.size < 500) { setCreatorError("Recording too short"); return; }
+        await transcribeBlob(blob);
+      };
+      rec.start();
+      recorderRef.current = rec;
+      setIsRecording(true);
+    } catch (e) {
+      setCreatorError("Microphone access denied");
+    }
+  }
+
+  function stopRecording() {
+    recorderRef.current?.stop();
+    setIsRecording(false);
+  }
+
+  async function transcribeBlob(blob: Blob) {
+    setIsCreating(true);
+    try {
+      const form = new FormData();
+      form.append("audio", blob, "clip.webm");
+      form.append("languageCode", "unknown");
+      const r = await fetch("/api/stt-quick", { method: "POST", body: form });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || "STT failed");
+      setIdea((prev) => (prev ? prev + " " : "") + (data.transcript || ""));
+    } catch (e) {
+      setCreatorError(e instanceof Error ? e.message : "STT failed");
+    } finally {
+      setIsCreating(false);
+    }
   }
 
   function copyAll() {
@@ -114,8 +191,19 @@ export default function TranscriptToolbar({
               {opt.label}
             </button>
           ))}
+          <button
+            onClick={() => setShowCreator((v) => !v)}
+            title="Generate a detailed custom prompt from a rough idea"
+            className={`rounded-lg px-3 py-1.5 font-bold transition-all ${
+              showCreator
+                ? "bg-gradient-to-br from-amber to-pink text-white shadow-sm"
+                : "border border-light-3 bg-white text-muted hover:border-amber/40"
+            }`}
+          >
+            {"\ud83e\ude84"} Prompt Creator
+          </button>
         </div>
-        {style === "custom" && (
+        {style === "custom" && !showCreator && (
           <textarea
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
@@ -123,6 +211,55 @@ export default function TranscriptToolbar({
             rows={3}
             className="mt-2 w-full resize-y rounded-lg border border-light-3 bg-white px-3 py-2 text-xs text-ink placeholder:text-muted/60 focus:border-indigo focus:outline-none"
           />
+        )}
+        {showCreator && (
+          <div className="mt-3 rounded-lg border border-amber/30 bg-white p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber">{"\ud83e\ude84"} Prompt Creator</span>
+              <span className="text-[0.65rem] text-muted">Type or speak your rough idea \u2192 get a detailed prompt</span>
+            </div>
+            <div className="flex gap-2">
+              <textarea
+                value={idea}
+                onChange={(e) => setIdea(e.target.value)}
+                placeholder="e.g. Make a 10-slide PPT for class 5 students explaining the main ideas in simple language with examples"
+                rows={3}
+                className="flex-1 resize-y rounded-lg border border-light-3 bg-light px-3 py-2 text-xs text-ink placeholder:text-muted/60 focus:border-amber focus:outline-none"
+              />
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isCreating}
+                title={isRecording ? "Stop recording" : "Speak your idea (Sarvam STT)"}
+                className={`flex h-auto items-center justify-center rounded-lg px-3 text-lg font-bold transition-all ${
+                  isRecording
+                    ? "bg-red text-white animate-pulse"
+                    : "border border-light-3 bg-white text-muted hover:border-amber"
+                }`}
+              >
+                {isRecording ? "\u23f9" : "\ud83c\udf99\ufe0f"}
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[0.65rem] text-muted">
+                {isRecording ? "Recording\u2026 click \u23f9 when done" : isCreating ? "Working\u2026" : creatorError ? <span className="text-red">{creatorError}</span> : ""}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setIdea(""); setCreatorError(null); }}
+                  className="rounded-lg border border-light-3 px-3 py-1.5 text-xs font-bold text-muted hover:border-red/40 hover:text-red"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={generatePrompt}
+                  disabled={isCreating || idea.trim().length < 3}
+                  className="rounded-lg bg-gradient-to-br from-amber to-pink px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:-translate-y-0.5 hover:shadow-md disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {isCreating ? "Generating\u2026" : "Generate \u2192"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
